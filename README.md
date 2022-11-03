@@ -6,4 +6,5 @@ This repository contains the final project submission by Guruprashanth Krishnaku
 
 ## Team Members
 Guruprashanth Krishnakumar (gukr5411@colorado.edu)
+
 Jordi Cros Mompart  (jocr9426@colorado.edu)
