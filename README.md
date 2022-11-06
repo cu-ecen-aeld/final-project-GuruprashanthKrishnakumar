@@ -4,6 +4,9 @@ This repository contains the final project submission by Guruprashanth Krishnaku
 ## Project Overview
 [Project Overview](https://github.com/cu-ecen-aeld/final-project-jordicrosmompart/wiki/Project-Overview)
 
+## Schedule
+[Schedule](https://github.com/cu-ecen-aeld/final-project-jordicrosmompart/wiki/Schedule)
+
 ## Team Members
 Guruprashanth Krishnakumar (gukr5411@colorado.edu)
 
