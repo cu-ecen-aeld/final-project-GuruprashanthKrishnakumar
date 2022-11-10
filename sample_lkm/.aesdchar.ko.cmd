@@ -1,0 +1,1 @@
+cmd_/home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/aesdchar.ko := ld -r  -m elf_x86_64  --build-id=sha1  -T scripts/module.lds -o /home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/aesdchar.ko /home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/aesdchar.o /home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/aesdchar.mod.o;  true

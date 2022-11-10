@@ -1,0 +1,1 @@
+cmd_/home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/aesdchar.o := ld  -m elf_x86_64    -r -o /home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/aesdchar.o /home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/aesd-circular-buffer.o /home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/main.o

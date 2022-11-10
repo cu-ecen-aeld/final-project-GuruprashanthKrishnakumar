@@ -1,0 +1,1 @@
+cmd_/home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/Module.symvers := sed 's/\.ko$$/\.o/' /home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/modules.order | scripts/mod/modpost -m -a  -o /home/CROS/final-project-GuruprashanthKrishnakumar/sample_lkm/Module.symvers -e -i Module.symvers   -T -
