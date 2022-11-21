@@ -97,7 +97,6 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         str = kmalloc(sizeof(char)*MAC_SIZE_STR, GFP_KERNEL);
         if(!str)
             return -ENOMEM;
-        
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
             return -EFAULT;
         if (ioctl_str.str_len < MAC_SIZE_STR)
@@ -168,7 +167,7 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             return -EFAULT;
         if (ioctl_str.str_len < MAC_SIZE_STR*100)
             return -EOVERFLOW;
-        
+
         hm11_discover(str);
 
         if (copy_to_user((void __user *)ioctl_str.str, str, MAC_SIZE_STR))
@@ -282,6 +281,7 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         if (copy_from_user(str, (const void __user *)ioctl_str.str, MAX_NAME_LEN))
             return -EFAULT;
 
+        printk("User-space string: %s", str);
         hm11_set_name(str);
 
         //Free the used space
@@ -318,6 +318,7 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
         break;
     default:
+        printk("hm11: Invalid ioctl command.\n");
         retval = -ENOTTY;
         break;
     }

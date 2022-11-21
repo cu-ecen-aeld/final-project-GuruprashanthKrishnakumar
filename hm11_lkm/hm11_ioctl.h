@@ -78,12 +78,12 @@ struct hm11_ioctl_str
 //Subscribe to a characteristic notification
     //If return value == 0, subscription is successful
     //If return value == -ENODEV, the characteristic cannot handle subscription or doesn't exist
-#define HM11_CHARACTERISTIC_NOTIFY  _IOR(HM11_IOC_MAGIC, 9, struct hm11_ioctl_str)
+#define HM11_CHARACTERISTIC_NOTIFY  _IOW(HM11_IOC_MAGIC, 9, struct hm11_ioctl_str)
 
-//Subscribe to a characteristic notification
-    //If return value == 0, subscription is successful
+//Unsubscribe to a characteristic notification
+    //If return value == 0, unsubscription is successful
     //If return value == -ENODEV, the characteristic cannot handle subscription or doesn't exist
-#define HM11_CHARACTERISTIC_NOTIFY_OFF  _IOR(HM11_IOC_MAGIC, 10, struct hm11_ioctl_str)
+#define HM11_CHARACTERISTIC_NOTIFY_OFF  _IOW(HM11_IOC_MAGIC, 10, struct hm11_ioctl_str)
 
 //Let device not perform any automatic work
 #define HM11_PASSIVE    _IO(HM11_IOC_MAGIC, 11)
@@ -106,6 +106,6 @@ struct hm11_ioctl_str
 /**
  * The maximum number of commands supported, used for bounds checking
  */
-#define HM11_IOC_MAXNR 1
+#define HM11_IOC_MAXNR 15
 
 #endif /* HM11_IOCTL_H */
