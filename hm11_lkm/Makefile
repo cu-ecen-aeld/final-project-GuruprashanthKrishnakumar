@@ -4,7 +4,6 @@ EXTRA_CFLAGS += $(DEBFLAGS)
 ifneq ($(KERNELRELEASE),)
 # call from kernel build system
 obj-m	:= hm11.o
-hm11-y := main.o
 else
 
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
