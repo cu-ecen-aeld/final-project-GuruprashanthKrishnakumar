@@ -39,8 +39,8 @@ static void hm11_reset(void);
 static void hm11_set_role(char *str);
 static void hm11_sleep(void);
 
-ssize_t uart_send(const char *buf, size_t len);
-ssize_t uart_receive(char *buf, size_t size);
+extern ssize_t uart_send(const char *buf, size_t size);
+extern ssize_t uart_receive(char *buf, size_t size);
 
 int hm11_open(struct inode *inode, struct file *filp)
 {
