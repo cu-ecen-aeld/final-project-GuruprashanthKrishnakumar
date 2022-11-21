@@ -66,7 +66,7 @@ ssize_t hm11_read(struct file *filp, char __user *buf, size_t count, loff_t *f_p
 ssize_t hm11_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos)
 {
     printk("hm11: Write still to be developed\n");
-    return 0;
+    return count;
 }
 
 long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
