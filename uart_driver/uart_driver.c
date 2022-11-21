@@ -78,6 +78,13 @@ static ssize_t uart_read(struct file *file, char __user *buf, size_t size, loff_
 //FOPS write
 static ssize_t uart_write(struct file *file, const char __user *buf, size_t len, loff_t *ppos);
 
+//UART receive from another LKM
+ssize_t uart_receive(char *buf, size_t size);
+EXPORT_SYMBOL(uart_receive);
+//UART send from another LKM
+ssize_t uart_send(const char *buf, size_t len);
+EXPORT_SYMBOL(uart_send);
+
 //Routine to read from serial device registers
 static unsigned int reg_read(struct uart_serial_dev *dev, int offset);
 
@@ -123,6 +130,9 @@ static struct platform_driver uart_plat_driver = {
     .probe = uart_probe,
     .remove = uart_remove
 };
+
+//Driver instance
+struct uart_serial_dev *dev;
 
 /*********************************************************/
 static int uart_open(struct inode *inode, struct file *file)
@@ -182,6 +192,53 @@ static ssize_t uart_write(struct file *file, const char __user *buf, size_t len,
     kfree(kmem);   
     return len;
 }
+
+
+/*********************************************************/
+ssize_t uart_receive(char *buf, size_t size)
+{
+    char ret;
+    wait_event_interruptible(dev->waitQ, dev->buf.length > 0);
+
+    //An interesting approach is to sleep until a expected number of bytes is received
+
+    ret = read_circ_buff(dev);
+    *buf = ret;
+
+    return 1;
+}
+
+/*********************************************************/
+ssize_t uart_send(const char *buf, size_t len)
+{
+    int i;
+    char *kmem = kmalloc(sizeof(char)*(len + 1), GFP_KERNEL);
+    if(!kmem)
+    {
+        printk("uart: cannot allocate memory for a write operation.\n");
+        return 0;
+    }
+    if(memcpy(kmem, buf, len))
+    {
+        printk("uart: cannot copy memory from the user.\n");
+        return 0;
+    }
+    for (i = 0; i < len; i++)
+    {
+        if (kmem[i] == '\n')
+        {
+            write_char(dev, '\n');
+            write_char(dev, '\r');
+        }
+        else
+        {
+            write_char(dev, kmem[i]);
+        }
+    }
+    kfree(kmem);   
+    return len;
+}
+
 
 /*********************************************************/
 static unsigned int reg_read(struct uart_serial_dev *dev, int offset)
@@ -266,7 +323,6 @@ static char read_circ_buff(struct uart_serial_dev *dev)
 static int uart_probe(struct platform_device *pdev)
 {
     struct resource *res;
-    struct uart_serial_dev *dev;
     int ret, error;
     //Configure the UART device
     unsigned int baud_divisor;
