@@ -132,13 +132,13 @@ EXPORT_SYMBOL(uart_send);
 /*********************************************************/
 ssize_t uart_receive(char *buf, size_t size)
 {
-    char ret;
+    /*char ret;
     wait_event_interruptible(dev->waitQ, dev->buf.length > 0);
 
     //An interesting approach is to sleep until a expected number of bytes is received
 
     ret = read_circ_buff(dev);
-    *buf = ret;
+    *buf = ret;*/
 
     return 1;
 }
@@ -146,7 +146,7 @@ ssize_t uart_receive(char *buf, size_t size)
 /*********************************************************/
 ssize_t uart_send(const char *buf, size_t len)
 {
-    int i;
+    /*int i;
     char *kmem = kmalloc(sizeof(char)*(len + 1), GFP_KERNEL);
     if(!kmem)
     {
@@ -170,7 +170,7 @@ ssize_t uart_send(const char *buf, size_t len)
             write_char(dev, kmem[i]);
         }
     }
-    kfree(kmem);   
+    kfree(kmem);  */ 
     return len;
 }
 
