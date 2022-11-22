@@ -122,58 +122,6 @@ static struct platform_driver hw_plat_driver = {
     .remove = hw_remove
 };
 
-//UART receive from another LKM
-ssize_t uart_receive(char *buf, size_t size);
-//EXPORT_SYMBOL(uart_receive);
-//UART send from another LKM
-ssize_t uart_send(const char *buf, size_t len);
-//EXPORT_SYMBOL(uart_send);
-
-/*********************************************************/
-ssize_t uart_receive(char *buf, size_t size)
-{
-    /*char ret;
-    wait_event_interruptible(dev->waitQ, dev->buf.length > 0);
-
-    //An interesting approach is to sleep until a expected number of bytes is received
-
-    ret = read_circ_buff(dev);
-    *buf = ret;*/
-
-    return 1;
-}
-
-/*********************************************************/
-ssize_t uart_send(const char *buf, size_t len)
-{
-    /*int i;
-    char *kmem = kmalloc(sizeof(char)*(len + 1), GFP_KERNEL);
-    if(!kmem)
-    {
-        printk("uart: cannot allocate memory for a write operation.\n");
-        return 0;
-    }
-    if(memcpy(kmem, buf, len))
-    {
-        printk("uart: cannot copy memory from the user.\n");
-        return 0;
-    }
-    for (i = 0; i < len; i++)
-    {
-        if (kmem[i] == '\n')
-        {
-            write_char(dev, '\n');
-            write_char(dev, '\r');
-        }
-        else
-        {
-            write_char(dev, kmem[i]);
-        }
-    }
-    kfree(kmem);  */ 
-    return len;
-}
-
 /*********************************************************/
 static int hw_open(struct inode *inode, struct file *file)
 {
