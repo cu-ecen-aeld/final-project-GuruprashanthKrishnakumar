@@ -132,7 +132,7 @@ static struct platform_driver uart_plat_driver = {
 };
 
 //Driver instance
-struct uart_serial_dev *dev;
+//struct uart_serial_dev *dev;
 
 /*********************************************************/
 static int uart_open(struct inode *inode, struct file *file)
@@ -197,13 +197,13 @@ static ssize_t uart_write(struct file *file, const char __user *buf, size_t len,
 /*********************************************************/
 ssize_t uart_receive(char *buf, size_t size)
 {
-    char ret;
+    /*char ret;
     wait_event_interruptible(dev->waitQ, dev->buf.length > 0);
 
     //An interesting approach is to sleep until a expected number of bytes is received
 
     ret = read_circ_buff(dev);
-    *buf = ret;
+    *buf = ret;*/
 
     return 1;
 }
@@ -211,7 +211,7 @@ ssize_t uart_receive(char *buf, size_t size)
 /*********************************************************/
 ssize_t uart_send(const char *buf, size_t len)
 {
-    int i;
+    /*int i;
     char *kmem = kmalloc(sizeof(char)*(len + 1), GFP_KERNEL);
     if(!kmem)
     {
@@ -235,7 +235,7 @@ ssize_t uart_send(const char *buf, size_t len)
             write_char(dev, kmem[i]);
         }
     }
-    kfree(kmem);   
+    kfree(kmem); */  
     return len;
 }
 
@@ -335,7 +335,7 @@ static int uart_probe(struct platform_device *pdev)
         return -EINVAL;
     }
 
-    dev = devm_kzalloc(&pdev->dev, sizeof(struct uart_serial_dev), GFP_KERNEL);
+    struct uart_serial_dev *dev = devm_kzalloc(&pdev->dev, sizeof(struct uart_serial_dev), GFP_KERNEL);
     if (!dev)
     {
         pr_err("%s: devm_kzalloc returned NULL\n", __func__);
