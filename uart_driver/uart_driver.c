@@ -124,10 +124,10 @@ static struct platform_driver hw_plat_driver = {
 
 //UART receive from another LKM
 ssize_t uart_receive(char *buf, size_t size);
-EXPORT_SYMBOL(uart_receive);
+//EXPORT_SYMBOL(uart_receive);
 //UART send from another LKM
 ssize_t uart_send(const char *buf, size_t len);
-EXPORT_SYMBOL(uart_send);
+//EXPORT_SYMBOL(uart_send);
 
 /*********************************************************/
 ssize_t uart_receive(char *buf, size_t size)
