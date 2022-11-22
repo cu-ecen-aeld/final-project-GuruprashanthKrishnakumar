@@ -14,6 +14,7 @@
 #include <linux/cdev.h>
 #include <linux/fs.h> // file_operations
 #include <asm/uaccess.h>
+#include <linux/slab.h>
 #include "hm11_ioctl.h"
 
 MODULE_AUTHOR("Jordi Cros Mompart");
