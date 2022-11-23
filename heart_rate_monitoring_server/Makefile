@@ -10,7 +10,7 @@ LDFLAGS?= -pthread -lrt
 all: hm11
 
 hm11: $(SOURCE)
-	$(CC) $(CFLAGS) $^ -o $@ $(INCLUDES) $(LDFLAGS)
+	$(CC) $(CFLAGS) $^ -o ./heartrate_monitoring_server $(INCLUDES) $(LDFLAGS)
 
 clean:
 	rm -f $(OUTPUT)
