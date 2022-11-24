@@ -47,6 +47,13 @@ struct circ_buff
     int length;
 };
 
+enum uart_number
+{
+    UART1,
+    UART4,
+    UART5,
+};
+
 //Serial device struct
 struct uart_serial_dev
 {
@@ -56,9 +63,12 @@ struct uart_serial_dev
     struct circ_buff buf;
     wait_queue_head_t waitQ;
     unsigned long irqFlags;
+    enum uart_number this_uart_number;
     spinlock_t lock;
 
 };
+
+
 
 //Driver probe routine
 static int uart_probe(struct platform_device *pdev);
@@ -132,7 +142,7 @@ static struct platform_driver uart_plat_driver = {
 };
 
 //Driver instance
-//struct uart_serial_dev *dev;
+struct uart_serial_dev *hlm_dev;
 
 /*********************************************************/
 static int uart_open(struct inode *inode, struct file *file)
@@ -148,8 +158,13 @@ static int uart_close(struct inode *inodep, struct file *filp)
 static ssize_t uart_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
 {
     struct miscdevice *mdev = (struct miscdevice *)file->private_data;
-    struct uart_serial_dev *dev = container_of(mdev, struct uart_serial_dev, mDev);
     char ret;
+    struct uart_serial_dev *dev = container_of(mdev, struct uart_serial_dev, mDev);
+    if(dev->this_uart_number == UART1)
+    {
+        return -EINVAL;
+    }
+    
     wait_event_interruptible(dev->waitQ, dev->buf.length > 0);
 
     ret = read_circ_buff(dev);
@@ -166,7 +181,13 @@ static ssize_t uart_write(struct file *file, const char __user *buf, size_t len,
     struct miscdevice *mdev = (struct miscdevice *)file->private_data;
     struct uart_serial_dev *dev = container_of(mdev, struct uart_serial_dev, mDev);
     int i;
-    char *kmem = kmalloc(sizeof(char)*(len + 1), GFP_KERNEL);
+    char *kmem;
+    if(dev->this_uart_number == UART1)
+    {
+        return -EINVAL;
+    }
+    
+    kmem = kmalloc(sizeof(char)*(len + 1), GFP_KERNEL);
     if(!kmem)
     {
         printk("uart: cannot allocate memory for a write operation.\n");
@@ -197,13 +218,13 @@ static ssize_t uart_write(struct file *file, const char __user *buf, size_t len,
 /*********************************************************/
 ssize_t uart_receive(char *buf, size_t size)
 {
-    /*char ret;
-    wait_event_interruptible(dev->waitQ, dev->buf.length > 0);
+    char ret;
+    wait_event_interruptible(hlm_dev->waitQ, hlm_dev->buf.length > 0);
 
     //An interesting approach is to sleep until a expected number of bytes is received
 
-    ret = read_circ_buff(dev);
-    *buf = ret;*/
+    ret = read_circ_buff(hlm_dev);
+    *buf = ret;
 
     return 1;
 }
@@ -211,7 +232,7 @@ ssize_t uart_receive(char *buf, size_t size)
 /*********************************************************/
 ssize_t uart_send(const char *buf, size_t len)
 {
-    /*int i;
+    int i;
     char *kmem = kmalloc(sizeof(char)*(len + 1), GFP_KERNEL);
     if(!kmem)
     {
@@ -227,15 +248,15 @@ ssize_t uart_send(const char *buf, size_t len)
     {
         if (kmem[i] == '\n')
         {
-            write_char(dev, '\n');
-            write_char(dev, '\r');
+            write_char(hlm_dev, '\n');
+            write_char(hlm_dev, '\r');
         }
         else
         {
-            write_char(dev, kmem[i]);
+            write_char(hlm_dev, kmem[i]);
         }
     }
-    kfree(kmem); */  
+    kfree(kmem);   
     return len;
 }
 
@@ -327,6 +348,7 @@ static int uart_probe(struct platform_device *pdev)
     //Configure the UART device
     unsigned int baud_divisor;
     unsigned int uartclk;
+    struct uart_serial_dev *dev;
     res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
     if (!res)
@@ -335,7 +357,7 @@ static int uart_probe(struct platform_device *pdev)
         return -EINVAL;
     }
 
-    struct uart_serial_dev *dev = devm_kzalloc(&pdev->dev, sizeof(struct uart_serial_dev), GFP_KERNEL);
+    dev = devm_kzalloc(&pdev->dev, sizeof(struct uart_serial_dev), GFP_KERNEL);
     if (!dev)
     {
         pr_err("%s: devm_kzalloc returned NULL\n", __func__);
@@ -385,11 +407,23 @@ static int uart_probe(struct platform_device *pdev)
 
     reg_write(dev, UART_OMAP_MDR1_16X_MODE, UART_OMAP_MDR1);
 
+    switch(res->start)
+    {
+        case 0x48022000:
+            dev->this_uart_number = UART1;
+            hlm_dev = dev;
+            break;
+        case 0x481a8000:
+            dev->this_uart_number = UART4;
+            break;
+        case 0x481aa000:
+            dev->this_uart_number = UART5;
+            break;
+    }
     //Initialize and register a misc device
     dev->mDev.minor = MISC_DYNAMIC_MINOR;
-    dev->mDev.name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "uart_serial-%x", res->start);
+    dev->mDev.name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "uart_serial-%llx", res->start);
     dev->mDev.fops = &uart_fops;
-
     error = misc_register(&dev->mDev);
     if (error)
     {
