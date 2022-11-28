@@ -34,6 +34,8 @@
 #include <linux/interrupt.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
+#include <linux/jiffies.h>
+
 
 
 #define BUFF_SIZE 512
@@ -94,6 +96,11 @@ EXPORT_SYMBOL(uart_receive);
 //UART send from another LKM
 ssize_t uart_send(const char *buf, size_t len);
 EXPORT_SYMBOL(uart_send);
+
+
+//UART receive from another LKM
+ssize_t uart_receive_timeout(char *buf, size_t size,int msecs);
+EXPORT_SYMBOL(uart_receive_timeout);
 
 //Routine to read from serial device registers
 static unsigned int reg_read(struct uart_serial_dev *dev, int offset);
@@ -164,10 +171,20 @@ static ssize_t uart_read(struct file *file, char __user *buf, size_t size, loff_
     {
         return -EINVAL;
     }
+    spin_lock_irqsave(&dev->lock, dev->irqFlags);
+    while(dev->buf.length == 0)
+    {
+        spin_unlock_irqrestore(&dev->lock, dev->irqFlags);
+        if(wait_event_interruptible(dev->waitQ, dev->buf.length > 0))
+        {
+            return -EINTR;
+        }
+        spin_lock_irqsave(&dev->lock, dev->irqFlags);
+    }
     
-    wait_event_interruptible(dev->waitQ, dev->buf.length > 0);
 
     ret = read_circ_buff(dev);
+    spin_unlock_irqrestore(&dev->lock, dev->irqFlags);
     if(copy_to_user(buf, &ret, 1))
     {
         printk("uart: cannot copy memory to the user.\n");
@@ -219,14 +236,59 @@ static ssize_t uart_write(struct file *file, const char __user *buf, size_t len,
 ssize_t uart_receive(char *buf, size_t size)
 {
     char ret;
-    wait_event_interruptible(hlm_dev->waitQ, hlm_dev->buf.length > 0);
+    spin_lock_irqsave(&hlm_dev->lock, hlm_dev->irqFlags);
+    while(hlm_dev->buf.length == 0)
+    {
+        spin_unlock_irqrestore(&hlm_dev->lock, hlm_dev->irqFlags);
+        if(wait_event_interruptible(hlm_dev->waitQ, hlm_dev->buf.length > 0))
+        {
+            return -EINTR;
+        }
+        spin_lock_irqsave(&hlm_dev->lock, hlm_dev->irqFlags);
+    }
+    
 
     //An interesting approach is to sleep until a expected number of bytes is received
 
     ret = read_circ_buff(hlm_dev);
+    spin_unlock_irqrestore(&hlm_dev->lock, hlm_dev->irqFlags);
     *buf = ret;
-
+    
     return 1;
+}
+
+
+ssize_t uart_receive_timeout(char *buf, size_t size,int msecs)
+{
+    char ret;
+    spin_lock_irqsave(&hlm_dev->lock, hlm_dev->irqFlags);
+    while(hlm_dev->buf.length == 0)
+    {
+        spin_unlock_irqrestore(&hlm_dev->lock, hlm_dev->irqFlags);
+        ret = wait_event_interruptible_timeout(hlm_dev->waitQ,hlm_dev->buf.length > 0,msecs_to_jiffies(msecs));
+        //timeout occurred but condition still evaluated to false
+        if(ret == 0)
+        {
+            goto out;
+        }
+        //-ERESTARTSYS occured
+        else if(ret < 0)
+        {
+            ret = -EINTR;
+            goto out;
+        }
+        spin_lock_irqsave(&hlm_dev->lock, hlm_dev->irqFlags);
+    }
+    
+
+    //An interesting approach is to sleep until a expected number of bytes is received
+
+    ret = read_circ_buff(hlm_dev);
+    spin_unlock_irqrestore(&hlm_dev->lock, hlm_dev->irqFlags);
+    *buf = ret;
+    
+    out:
+        return ret;
 }
 
 /*********************************************************/
@@ -239,9 +301,11 @@ ssize_t uart_send(const char *buf, size_t len)
         printk("uart: cannot allocate memory for a write operation.\n");
         return 0;
     }
-    
-    memcpy(kmem, buf, len);
-
+    if(memcpy(kmem, buf, len))
+    {
+        printk("uart: cannot copy memory from the user.\n");
+        return 0;
+    }
     for (i = 0; i < len; i++)
     {
         if (kmem[i] == '\n')
@@ -324,7 +388,7 @@ static void write_circ_buff(char c, struct uart_serial_dev *dev)
 static char read_circ_buff(struct uart_serial_dev *dev)
 {
     char c;
-    spin_lock_irqsave(&dev->lock, dev->irqFlags);
+    
     c = dev->buf.buff[dev->buf.read_pos];
     dev->buf.buff[dev-> buf.read_pos] = '\0';
     if(dev->buf.length > 0)
@@ -333,7 +397,7 @@ static char read_circ_buff(struct uart_serial_dev *dev)
         dev->buf.read_pos = ((dev->buf.read_pos + 1 ) % BUFF_SIZE);
         dev->buf.length--;
     }
-    spin_unlock_irqrestore(&dev->lock, dev->irqFlags);
+    
     return c;
 }
 

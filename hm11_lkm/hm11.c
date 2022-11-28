@@ -24,7 +24,9 @@ static int hm11_major =   0; // use dynamic major
 static int hm11_minor =   0;
 static struct cdev cdev;
 
-static long hm11_echo(void);
+static ssize_t hm11_transmit(char *buf, size_t len);
+static ssize_t variable_wait_limited(char *buf, size_t len);
+static ssize_t hm11_echo(void);
 static void hm11_mac_read(char *str);
 static void hm11_mac_write(char *str);
 static long hm11_connect_last(void);
@@ -42,6 +44,8 @@ static void hm11_sleep(void);
 
 extern ssize_t uart_send(const char *buf, size_t size);
 extern ssize_t uart_receive(char *buf, size_t size);
+extern ssize_t uart_receive_timeout(char *buf, size_t size,int msecs);
+
 
 int hm11_open(struct inode *inode, struct file *filp)
 {
@@ -91,8 +95,16 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     case HM11_ECHO:
         printk("hm11: Performing echo...\n");
         res = hm11_echo();
-        if (copy_to_user((void __user *)arg, &res, sizeof(char)))
-            return -EFAULT;
+        if(res < 0)
+        {
+            //RETURN ERROR
+        }
+        else
+        {
+            if (copy_to_user((void __user *)arg, &res, sizeof(char)))
+                return -EFAULT;
+        }
+
 
         break;
     case HM11_MAC_RD:
@@ -373,14 +385,117 @@ void hm11_cleanup_module(void)
     unregister_chrdev_region(devno, 1);
 }
 
-static long hm11_echo()
+static ssize_t hm11_transmit(char *buf, size_t len)
 {
-    long ret = 0;
+    size_t num_bytes_sent = 0;
+    while(num_bytes_sent < len)
+    {
+        int ret = uart_send(&buf[num_bytes_sent],(len - num_bytes_sent));
+        if(ret < 0)
+        {
+            printk("HM11 Write: Error in transmission %d",ret);
+            return ret;
+        }
+        num_bytes_sent += ret;
+    }
+    return num_bytes_sent;
+}
 
-    uart_send("AT", 2);
-    //uart_receive();
+static ssize_t variable_wait_limited(char *buf, size_t len)
+{
+    size_t num_bytes_received = 0;
+    int ret;
+    while(num_bytes_received < len)
+    {
+        //receive one byte at a time with a gap of 1000 ms 
+        ret = uart_receive_timeout(&buf[num_bytes_received],1,1000);
+        //return value of 0 indicates, timeout occured and no bytes were read
+        if(ret == 0)
+        {
+            goto out;
+        }
+        //error
+        else if(ret < 0)
+        {
+            if(ret == -EINTR)
+            {
+                continue;
+            }
+            else
+            {
+                printk("variable_wait_limited: Error in reception %d",ret);
+                return ret;
+            }
+        }
+        //byte received
+        else
+        {
+            num_bytes_received += ret;
+        }
+    }
+    out:
+        return num_bytes_received;
+}
 
-    return ret;
+static ssize_t hm11_echo()
+{
+    ssize_t ret = 0, bytes_read = 0;
+    char *receive_buf;
+    ret = hm11_transmit("AT",2);
+
+    if(ret<0)
+    {
+        return ret;
+    }
+
+    receive_buf = kmalloc(7*sizeof(char),GFP_KERNEL);
+    if(!receive_buf)
+    {
+        return -ENOMEM;
+    }
+    //unconditional wait for two bytes (since we expect a minimum of two bytes) and optional wait for more (upto 7)
+    while(bytes_read <2)
+    {
+        ret = variable_wait_limited(&receive_buf[bytes_read],(7 - bytes_read));
+        //return error
+        if(ret < 0)
+        {
+            goto free_mem;
+        }
+        bytes_read += ret;
+        //if minimum two bytes read
+        if(bytes_read >= 2)
+        {
+            if(bytes_read == 7)
+            {
+                if(strncmp(receive_buf,"OK+WAKE",bytes_read)==0)
+                {
+                    ret = 2;
+                    goto free_mem;
+                }
+                else if(strncmp(receive_buf,"OK+LOST",bytes_read)==0)
+                {
+                    ret = 1;
+                    goto free_mem;
+                }
+                //HANDLE GARBAGE CASE: 7 bytes read but they didn't correspond to expected values
+            }
+            else if(bytes_read == 2)
+            {
+                if(strncmp(receive_buf,"OK",bytes_read)==0)
+                {
+                    ret = 0;
+                    goto free_mem;
+                }
+                //HANDLE GARBAGE CASE: two bytes were read but it was not OK
+            }
+            //HANDLE GARBAGE CASE: Some number of bytes other than 7 and two bytes were read
+        }
+    }
+    //uart_receive()
+    free_mem:
+        kfree(receive_buf);
+        return ret;
 }
 
 static void hm11_mac_read(char *str)
@@ -399,7 +514,7 @@ static void hm11_mac_write(char *str)
 }
 
 static long hm11_connect_last()
-{
+    {
     long ret = 0;
 
     /*write_uart("AT+CONNL");
