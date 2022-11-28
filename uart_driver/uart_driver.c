@@ -239,11 +239,9 @@ ssize_t uart_send(const char *buf, size_t len)
         printk("uart: cannot allocate memory for a write operation.\n");
         return 0;
     }
-    if(memcpy(kmem, buf, len))
-    {
-        printk("uart: cannot copy memory from the user.\n");
-        return 0;
-    }
+    
+    memcpy(kmem, buf, len);
+
     for (i = 0; i < len; i++)
     {
         if (kmem[i] == '\n')
