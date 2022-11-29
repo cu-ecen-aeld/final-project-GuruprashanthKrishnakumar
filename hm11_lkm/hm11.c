@@ -103,7 +103,9 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         else
         {
             if (copy_to_user((void __user *)arg, &res, sizeof(char)))
-                return -EFAULT;
+            {
+                ret_val = -EFAULT;
+            }
         }
 
 
