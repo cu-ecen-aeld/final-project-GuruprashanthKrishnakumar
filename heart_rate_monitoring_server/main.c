@@ -86,7 +86,7 @@ int main(int c, char **argv)
         return 1;
     }
     cmd_str.str[0] = '1';
-    ret = ioctl(hm11_dev, HM11_ROLE, cmd_str);
+    ret = ioctl(hm11_dev, HM11_ROLE, &cmd_str);
     if(ret)
     {
         printf("An error occurred setting the device as Controller: %s\n", strerror(ret));
@@ -120,7 +120,7 @@ int main(int c, char **argv)
         return 1;
     }
     cmd_str.str_len = MAC_SIZE_STR;
-    ret = ioctl(hm11_dev, HM11_CONN_MAC, cmd_str);
+    ret = ioctl(hm11_dev, HM11_CONN_MAC, &cmd_str);
     if(ret)
     {
         printf("Could not connect to the device, aborting: %s\n", strerror(ret));
@@ -141,7 +141,7 @@ int main(int c, char **argv)
         return 1;
     }
     cmd_str.str_len = CHARACTERISTIC_SIZE_STR;
-    ret = ioctl(hm11_dev, HM11_CHARACTERISTIC_NOTIFY, cmd_str);
+    ret = ioctl(hm11_dev, HM11_CHARACTERISTIC_NOTIFY, &cmd_str);
     if(ret)
     {
         printf("Could not request characteristic notify: %s\n", strerror(ret));

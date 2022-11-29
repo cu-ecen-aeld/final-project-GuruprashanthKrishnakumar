@@ -809,9 +809,7 @@ static ssize_t hm11_set_role(char *str)
     char role_cmd[9];
     char *buf;
     snprintf(role_cmd, sizeof(role_cmd), "AT+ROLE%s", str);
-    printk("hm11: %s", role_cmd);
     ret = hm11_transmit(role_cmd,8);
-    printk("hm11: return value from the transmit is %d", ret);
     if(ret<0)
     {
         return ret;
