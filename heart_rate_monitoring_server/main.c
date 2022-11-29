@@ -114,6 +114,7 @@ int main(int c, char **argv)
 
     //Now the device is ready to be connected to the heart rate belt
     printf("Attempting connection with the heart rate belt\n");
+    sleep(2);
     cmd_str.str = malloc(sizeof(char)*MAC_SIZE_STR);
     if(!cmd_str.str)
     {

@@ -1,5 +1,5 @@
 SOURCE = ./main.c
-OUTPUT = ./main
+OUTPUT = ./heartrate_monitoring_server
 
 CROSS_COMPILE =
 
