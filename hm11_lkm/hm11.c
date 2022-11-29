@@ -612,7 +612,11 @@ static long hm11_mac_connect(char *str)
     {
         return -ENOMEM;
     }
-
+    ret = fixed_wait(receive_buf,8);
+    if(ret < 0)
+    {
+        goto free_mem;
+    }
     while(bytes_read <9)
     {
         ret = variable_wait_limited(&receive_buf[bytes_read],(10 - bytes_read));
