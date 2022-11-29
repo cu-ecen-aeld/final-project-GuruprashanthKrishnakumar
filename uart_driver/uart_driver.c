@@ -286,7 +286,8 @@ ssize_t uart_receive_timeout(char *buf, size_t size,int msecs)
     ret = read_circ_buff(hlm_dev);
     spin_unlock_irqrestore(&hlm_dev->lock, hlm_dev->irqFlags);
     *buf = ret;
-    
+
+    ret = 1;
     out:
         return ret;
 }

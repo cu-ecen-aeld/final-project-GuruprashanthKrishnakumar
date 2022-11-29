@@ -18,6 +18,9 @@
 #include <string.h>
 #include "../hm11_lkm/hm11_ioctl.h"
 
+#define HEART_RATE_MAC              ("0C8CDC32BDEC")
+#define HEART_RATE_CHARACTERISTIC   ("0026")
+
 /**
 * main
 * @brief Follows the steps described in the file header.
@@ -28,6 +31,9 @@
 */
 int main(int c, char **argv)
 {
+    int ret;
+    struct hm11_ioctl_str cmd_str;
+    char char_ret;
     int hm11_dev = open("/dev/hm11", O_RDWR);
     if(hm11_dev < 0)
     {
@@ -35,100 +41,121 @@ int main(int c, char **argv)
         return 1;
     }
 
-    char res;
-    struct hm11_ioctl_str ioctl_str;
-    ioctl_str.str = malloc(2048);
-    if(!ioctl_str.str)
+    printf("The HM11 module has been successfully opened.\n");
+
+    //Perform sanity check
+    printf("Performing sanity check...\n");
+    ret = ioctl(hm11_dev, HM11_ECHO, &char_ret);
+    if(ret)
     {
-        printf("Could not allocate space to test ioctl commands.\n");
+        printf("An error occured while issuing an ECHO to the HM11 module: %s\n", strerror(ret));
+    }
+    switch(char_ret)
+    {
+    case 0:
+        printf("Echo performed successfully, device was idle.\n");
+        break;
+    case 1:
+        printf("Echo performed successfully, device has been disconnected from its peer.\n");
+        break;
+    case 2:
+        printf("Echo performed successfully, device has been awaken from sleep.\n");
+        break;
+    }
+
+    //Reset device to get default configuration
+    printf("Resetting device to get default configuration.\n");
+    ret = ioctl(hm11_dev, HM11_DEFAULT);
+    if(ret)
+    {
+        printf("Setting the device to default did not perform successfully: %s\n", strerror(ret));
+        printf("Terminating program.\n");
         return 1;
     }
-    ioctl_str.str_len = 8;
-    strcpy(ioctl_str.str, "Testing");
-
-    //Test ioctl calls
-    printf("Testing HM11_ECHO...\n");
-    if(ioctl(hm11_dev, HM11_ECHO, &res))
+    else
     {
-        printf("Echo did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_MAC_RD...\n");
-    if(ioctl(hm11_dev, HM11_MAC_RD, &ioctl_str))
-    {
-        printf("MAC read did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_MAC_WR...\n");
-    if(ioctl(hm11_dev, HM11_MAC_WR, &ioctl_str))
-    {
-        printf("MAC write did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_CONN_LAST_DEVICE...\n");
-    if(ioctl(hm11_dev, HM11_CONN_LAST_DEVICE))
-    {
-        printf("Connect to last device did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_CONN_MAC...\n");
-    if(ioctl(hm11_dev, HM11_CONN_MAC, &ioctl_str))
-    {
-        printf("Connect to a MAC address did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_DISCOVER...\n");
-    if(ioctl(hm11_dev, HM11_DISCOVER, &ioctl_str))
-    {
-        printf("Discovery did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_SERVICE_DISCOVER...\n");
-    if(ioctl(hm11_dev, HM11_SERVICE_DISCOVER, &ioctl_str))
-    {
-        printf("Service discovery did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_CHARACTERISTIC_DISCOVER...\n");
-    if(ioctl(hm11_dev, HM11_CHARACTERISTIC_DISCOVER, &ioctl_str))
-    {
-        printf("Characteristic discovery did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_CHARACTERISTIC_NOTIFY...\n");
-    if(ioctl(hm11_dev, HM11_CHARACTERISTIC_NOTIFY, &ioctl_str))
-    {
-        printf("Characteristic notify did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_CHARACTERISTIC_NOTIFY_OFF...\n");
-    if(ioctl(hm11_dev, HM11_CHARACTERISTIC_NOTIFY_OFF, &ioctl_str))
-    {
-        printf("Unsubscription to characteristic did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_PASSIVE...\n");
-    if(ioctl(hm11_dev, HM11_PASSIVE))
-    {
-        printf("Passive mode set did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_NAME...\n");
-    if(ioctl(hm11_dev, HM11_NAME, &ioctl_str))
-    {
-        printf("Change device name did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_DEFAULT...\n");
-    if(ioctl(hm11_dev, HM11_DEFAULT))
-    {
-        printf("Set default device configuration did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_ROLE...\n");
-    if(ioctl(hm11_dev, HM11_ROLE, &ioctl_str))
-    {
-        printf("Set device role did not perform successfully: %s\n", strerror(errno));
-    }
-    printf("Testing HM11_SLEEP...\n");
-    if(ioctl(hm11_dev, HM11_SLEEP, &res))
-    {
-        printf("Device sleep did not perform successfully: %s\n", strerror(errno));
+        printf("HM11 successfully set to default configuration.\n");
     }
 
-    if(close(hm11_dev) == -1)
+    //Set device to Master
+    printf("Setting device to Controller (Master)\n");
+    cmd_str.str_len = 1;
+    cmd_str.str = malloc(sizeof(char)*1);
+    if(!cmd_str.str)
     {
-        //Else, error occurred, print it to syslog and finish program
-        printf("Could not close HM-11 driver\n");
-        //Even though error, try to close following files
+        printf("Mallocing of a command string has not been possible, aborting.\n");
+        return 1;
     }
+    cmd_str.str[0] = '1';
+    ret = ioctl(hm11_dev, HM11_ROLE, &cmd_str);
+    if(ret)
+    {
+        printf("An error occurred setting the device as Controller: %s\n", strerror(ret));
+        return 1;
+    }
+    else
+    {
+        printf("Device successfully set as Controller.\n");
+    }
+    free(cmd_str.str);
+
+    //Set device to passive mode (avoid automatic discovery performance, etc.)
+    printf("Setting device to passive mode\n");
+    ret = ioctl(hm11_dev, HM11_PASSIVE);
+    if(ret)
+    {
+        printf("Could not set device to passive mode, aborting.\n");
+        return 1;
+    }
+    else
+    {
+        printf("Device successfully set to passive mode.\n");
+    }
+
+    //Now the device is ready to be connected to the heart rate belt
+    printf("Attempting connection with the heart rate belt\n");
+    sleep(2);
+    cmd_str.str = malloc(sizeof(char)*MAC_SIZE_STR);
+    if(!cmd_str.str)
+    {
+        printf("Mallocing of a command string has not been possible, aborting.\n");
+        return 1;
+    }
+    strncpy(cmd_str.str, HEART_RATE_MAC, MAC_SIZE_STR);
+    cmd_str.str_len = MAC_SIZE_STR;
+    ret = ioctl(hm11_dev, HM11_CONN_MAC, &cmd_str);
+    if(ret)
+    {
+        printf("Could not connect to the device, aborting: %s\n", strerror(ret));
+        return 1;
+    }
+    else
+    {
+        printf("Connection to the heart rate has been successful.\n");
+    }
+    free(cmd_str.str);
+
+    //Subscribe to heart rate characteristic
+    printf("Subscribing to the heart rate value.\n");
+    cmd_str.str = malloc(sizeof(char)*CHARACTERISTIC_SIZE_STR);
+    if(!cmd_str.str)
+    {
+        printf("Mallocing of a command string has not been possible, aborting.\n");
+        return 1;
+    }
+    strncpy(cmd_str.str, HEART_RATE_CHARACTERISTIC, CHARACTERISTIC_SIZE_STR);
+    cmd_str.str_len = CHARACTERISTIC_SIZE_STR;
+    ret = ioctl(hm11_dev, HM11_CHARACTERISTIC_NOTIFY, &cmd_str);
+    if(ret)
+    {
+        printf("Could not request characteristic notify: %s\n", strerror(ret));
+        return 1;
+    }
+    else
+    {
+        printf("Characteristic successfully requested for notification.\n");
+    }
+    free(cmd_str.str);
 
     return 0;
 }
