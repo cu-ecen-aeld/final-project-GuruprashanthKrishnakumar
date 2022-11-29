@@ -475,11 +475,14 @@ static ssize_t variable_wait_limited(char *buf, size_t len)
 {
     size_t num_bytes_received = 0;
     int ret;
+    printk("hm11: entering variable_wait_limited");
     while(num_bytes_received < len)
     {
+        printk("hm11: Iteration start");
         //receive one byte at a time with a gap of 1000 ms 
         ret = uart_receive_timeout(&buf[num_bytes_received],1,1000);
         //return value of 0 indicates, timeout occured and no bytes were read
+        printk("hm11: returned %d", ret);
         if(ret == 0)
         {
             goto out;
@@ -501,9 +504,11 @@ static ssize_t variable_wait_limited(char *buf, size_t len)
         else
         {
             num_bytes_received += ret;
+            printk("hm11: total bytes received are %d", num_bytes_received);
         }
     }
     out:
+        printk("hm11: Leaving function");
         return num_bytes_received;
 }
 

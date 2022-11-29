@@ -262,11 +262,14 @@ ssize_t uart_receive_timeout(char *buf, size_t size,int msecs)
 {
     char ret;
     spin_lock_irqsave(&hlm_dev->lock, hlm_dev->irqFlags);
+    printk("uart_driver: entering uart_receive_timeout");
     while(hlm_dev->buf.length == 0)
     {
+        printk("uart_driver: Iteration");
         spin_unlock_irqrestore(&hlm_dev->lock, hlm_dev->irqFlags);
         ret = wait_event_interruptible_timeout(hlm_dev->waitQ,hlm_dev->buf.length > 0,msecs_to_jiffies(msecs));
         //timeout occurred but condition still evaluated to false
+        printk("uart_driver: value retuned is %d", ret);
         if(ret == 0)
         {
             goto out;
@@ -282,12 +285,13 @@ ssize_t uart_receive_timeout(char *buf, size_t size,int msecs)
     
 
     //An interesting approach is to sleep until a expected number of bytes is received
-
+    printk("uart_driver: character read is %c", ret);
     ret = read_circ_buff(hlm_dev);
     spin_unlock_irqrestore(&hlm_dev->lock, hlm_dev->irqFlags);
     *buf = ret;
     
     out:
+        printk("uart_driver: returning int %d or char %c", ret);
         return ret;
 }
 
