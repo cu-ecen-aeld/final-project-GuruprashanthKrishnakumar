@@ -254,7 +254,7 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         break;
     case HM11_CHARACTERISTIC_NOTIFY:
         printk("hm11: Subscribing to a characteristic notification...\n");
-        str = kmalloc(sizeof(char)*CHARACTERISTIC_SIZE_LEN, GFP_KERNEL);
+        str = kmalloc(sizeof(char)*CHARACTERISTIC_SIZE_STR, GFP_KERNEL);
         if(!str)
         {
             return -ENOMEM;
@@ -266,12 +266,12 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             ret_val = -EFAULT;
             goto free_mem_notif_on;
         }
-        if (ioctl_str.str_len != CHARACTERISTIC_SIZE_LEN)
+        if (ioctl_str.str_len != CHARACTERISTIC_SIZE_STR)
         {
             ret_val = -EOVERFLOW;
             goto free_mem_notif_on;
         }
-        if (copy_from_user(str, (const void __user *)ioctl_str.str, CHARACTERISTIC_SIZE_LEN))
+        if (copy_from_user(str, (const void __user *)ioctl_str.str, CHARACTERISTIC_SIZE_STR))
         {
             ret_val = -EFAULT;
             goto free_mem_notif_on;
@@ -287,15 +287,15 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         break;
     case HM11_CHARACTERISTIC_NOTIFY_OFF:
         printk("hm11: Stopping subscription to a characteristic notification...\n");
-        str = kmalloc(sizeof(char)*CHARACTERISTIC_SIZE_LEN, GFP_KERNEL);
+        str = kmalloc(sizeof(char)*CHARACTERISTIC_SIZE_STR, GFP_KERNEL);
         if(!str)
             return -ENOMEM;
         
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
             return -EFAULT;
-        if (ioctl_str.str_len != CHARACTERISTIC_SIZE_LEN)
+        if (ioctl_str.str_len != CHARACTERISTIC_SIZE_STR)
             return -EOVERFLOW;
-        if (copy_from_user(str, (const void __user *)ioctl_str.str, CHARACTERISTIC_SIZE_LEN))
+        if (copy_from_user(str, (const void __user *)ioctl_str.str, CHARACTERISTIC_SIZE_STR))
             return -EFAULT;
 
         ret_val = hm11_characteristic_notify_off(str);
@@ -351,16 +351,17 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             ret_val = -EINVAL;
             goto free_mem_role;
         }
-        if (ioctl_str.str[0]!= '0' && ioctl_str.str[0]!= '1')
-        {
-            ret_val = -EINVAL;
-            goto free_mem_role;
-        }
         if (copy_from_user(str, (const void __user *)ioctl_str.str, sizeof(char)))
         {
             ret_val = -EFAULT;
             goto free_mem_role;
         }
+        if (str[0]!= '0' && str[0]!= '1')
+        {
+            ret_val = -EINVAL;
+            goto free_mem_role;
+        }
+        
         ret_val = hm11_set_role(str);
 
         //Free the used space
@@ -621,7 +622,7 @@ static long hm11_mac_connect(char *str)
             goto free_mem;
         }
         bytes_read += ret;
-        //if minimum two bytes read
+        //if minimum seven bytes read
         if(bytes_read >= 7)
         {
             if(bytes_read == 8)
@@ -655,8 +656,6 @@ static long hm11_mac_connect(char *str)
             //HANDLE GARBAGE CASE: Some number of bytes other than 7 and 8 bytes were read
         }
     }
-    /*write_uart("mac_cmd");
-    read_uart();*/
     free_mem:
         kfree(receive_buf);
     return ret;
@@ -733,7 +732,7 @@ static ssize_t hm11_passive()
 {
     ssize_t ret = 0;
     char *buf;
-    ret = hm11_transmit("AT+RESET",8);
+    ret = hm11_transmit("AT+IMME1",8);
     if(ret<0)
     {
         return ret;
@@ -743,7 +742,7 @@ static ssize_t hm11_passive()
     {
         return -ENOMEM;
     }
-    ret = fixed_wait(buf,9);
+    ret = fixed_wait(buf,8);
     if(ret>0)
     {
         if(strncmp(buf,"OK+Set:1",8)==0)
@@ -757,9 +756,6 @@ static ssize_t hm11_passive()
     }
     kfree(buf);
     return ret;
-    /*write_uart("AT+IMME1");
-      read_uart();
-    */
 }
 
 static void hm11_set_name(char *str)

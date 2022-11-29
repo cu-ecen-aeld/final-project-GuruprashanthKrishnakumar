@@ -25,7 +25,7 @@
 #define MAC_SIZE                (12)
 #define MAC_SIZE_STR            (MAC_SIZE + 1)
 #define CHARACTERISTIC_SIZE     (4)
-#define CHARACTERISTIC_SIZE_LEN (CHARACTERISTIC_SIZE + 1)
+#define CHARACTERISTIC_SIZE_STR (CHARACTERISTIC_SIZE + 1)
 #define MAX_NAME_LEN            (12 + 1)
 
 struct hm11_ioctl_str 
