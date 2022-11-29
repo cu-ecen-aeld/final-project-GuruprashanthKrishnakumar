@@ -500,7 +500,7 @@ static ssize_t variable_wait_limited(char *buf, size_t len)
         //byte received
         else
         {
-            num_bytes_received++;
+            num_bytes_received += ret;
         }
     }
     out:
