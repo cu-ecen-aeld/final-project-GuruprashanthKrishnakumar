@@ -18,7 +18,8 @@
 #include <string.h>
 #include "../hm11_lkm/hm11_ioctl.h"
 
-#define HEART_RATE_MAC  ("0C8CDC32BDEC")
+#define HEART_RATE_MAC              ("0C8CDC32BDEC")
+#define HEART_RATE_CHARACTERISTIC   ("0026")
 
 /**
 * main
@@ -119,6 +120,7 @@ int main(int c, char **argv)
         printf("Mallocing of a command string has not been possible, aborting.\n");
         return 1;
     }
+    strncpy(cmd_str.str, HEART_RATE_MAC, MAC_SIZE_STR);
     cmd_str.str_len = MAC_SIZE_STR;
     ret = ioctl(hm11_dev, HM11_CONN_MAC, &cmd_str);
     if(ret)
@@ -140,6 +142,7 @@ int main(int c, char **argv)
         printf("Mallocing of a command string has not been possible, aborting.\n");
         return 1;
     }
+    strncpy(cmd_str.str, HEART_RATE_CHARACTERISTIC, CHARACTERISTIC_SIZE_STR);
     cmd_str.str_len = CHARACTERISTIC_SIZE_STR;
     ret = ioctl(hm11_dev, HM11_CHARACTERISTIC_NOTIFY, &cmd_str);
     if(ret)
