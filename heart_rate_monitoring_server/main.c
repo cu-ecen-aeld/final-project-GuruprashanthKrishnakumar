@@ -90,6 +90,7 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("An error occurred setting the device as Controller: %s\n", strerror(ret));
+        return 1;
     }
     else
     {
@@ -98,7 +99,7 @@ int main(int c, char **argv)
     free(cmd_str.str);
 
     //Set device to passive mode (avoid automatic discovery performance, etc.)
-    printf("Setting device to passive mode");
+    printf("Setting device to passive mode\n");
     ret = ioctl(hm11_dev, HM11_PASSIVE);
     if(ret)
     {

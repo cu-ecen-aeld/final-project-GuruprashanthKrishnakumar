@@ -343,21 +343,25 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
         {
+            printk("hm11: copying struct didnt work out");
             ret_val = -EFAULT;
             goto free_mem_role;
         }
         if (ioctl_str.str_len != sizeof(char))
         {
+            printk("hm11: %d len expected was 1", ioctl_str.str_len);
             ret_val = -EINVAL;
             goto free_mem_role;
         }
         if (copy_from_user(str, (const void __user *)ioctl_str.str, sizeof(char)))
         {
+            printk("hm11: copy string didnt work out");
             ret_val = -EFAULT;
             goto free_mem_role;
         }
         if (str[0]!= '0' && str[0]!= '1')
         {
+            printk("hm11: received %c but expected 1 or 0");
             ret_val = -EINVAL;
             goto free_mem_role;
         }
@@ -805,7 +809,9 @@ static ssize_t hm11_set_role(char *str)
     char role_cmd[9];
     char *buf;
     snprintf(role_cmd, sizeof(role_cmd), "AT+ROLE%s", str);
+    printk("hm11: %s", role_cmd);
     ret = hm11_transmit(role_cmd,8);
+    printk("hm11: return value from the transmit is %d", ret);
     if(ret<0)
     {
         return ret;
