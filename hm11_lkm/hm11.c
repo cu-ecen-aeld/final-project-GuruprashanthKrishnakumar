@@ -695,10 +695,14 @@ static long hm11_characteristic_notify(char *str)
     {
         return -ENOMEM;
     }
-    ret = fixed_wait(buf,10);
+    ret = fixed_wait(buf,12);
     if(ret>0)
     {
         if(strncmp(buf,"OK+SEND-OK",10)==0)
+        {
+            ret = 0;
+        }
+        else if(strncmp(buf,"OK+DATA-OK",10)==0)
         {
             ret = 0;
         }
