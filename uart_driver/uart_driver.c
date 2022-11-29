@@ -295,30 +295,18 @@ ssize_t uart_receive_timeout(char *buf, size_t size,int msecs)
 ssize_t uart_send(const char *buf, size_t len)
 {
     int i;
-    char *kmem = kmalloc(sizeof(char)*(len + 1), GFP_KERNEL);
-    if(!kmem)
-    {
-        printk("uart: cannot allocate memory for a write operation.\n");
-        return 0;
-    }
-    if(memcpy(kmem, buf, len))
-    {
-        printk("uart: cannot copy memory from the user.\n");
-        return 0;
-    }
     for (i = 0; i < len; i++)
     {
-        if (kmem[i] == '\n')
+        if (buf[i] == '\n')
         {
             write_char(hlm_dev, '\n');
             write_char(hlm_dev, '\r');
         }
         else
         {
-            write_char(hlm_dev, kmem[i]);
+            write_char(hlm_dev, buf[i]);
         }
     }
-    kfree(kmem);   
     return len;
 }
 
