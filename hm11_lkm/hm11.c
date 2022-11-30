@@ -59,6 +59,7 @@ static struct hm11_ioctl_str characteristics = {NULL,0};
 extern ssize_t uart_send(const char *buf, size_t size);
 extern ssize_t uart_receive(char *buf, size_t size);
 extern ssize_t uart_receive_timeout(char *buf, size_t size,int msecs);
+extern void uart_flush_buffer(void);
 
 
 int hm11_open(struct inode *inode, struct file *filp)
@@ -72,8 +73,9 @@ int hm11_open(struct inode *inode, struct file *filp)
 
 int hm11_release(struct inode *inode, struct file *filp)
 {
-    //Handle open
+    //Handle close
     printk("hm11: Module released\n");
+    uart_flush_buffer();
     module_put(THIS_MODULE);
 
     return 0;
@@ -345,17 +347,27 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             return -ENOMEM;
         
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
-            return -EFAULT;
+        {
+            ret_val = -EFAULT;
+            goto free_mem_notif_off;
+        }
         if (ioctl_str.str_len != CHARACTERISTIC_SIZE_STR)
-            return -EOVERFLOW;
+        {
+            ret_val = -EOVERFLOW;
+            goto free_mem_notif_off;
+        }
+            
         if (copy_from_user(str, (const void __user *)ioctl_str.str, CHARACTERISTIC_SIZE_STR))
-            return -EFAULT;
+        {
+            ret_val = -EFAULT;
+            goto free_mem_notif_off;
+        }
 
         ret_val = hm11_characteristic_notify_off(str);
-        //TODO: Parse retval according to what is defined in hm11_ioctl.h
 
         //Free the used space
-        kfree(str);
+        free_mem_notif_off:
+            kfree(str);
 
         break;
     case HM11_PASSIVE:
@@ -430,7 +442,7 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     case HM11_READ_NOTIFIED:
         printk("hm11: Reading most recent notified value...\n");
         res = hm11_read_notified();
-        printk("hm11: obtained value: %d", res);
+
         if(res < 0)
         {
             ret_val = res;
@@ -740,14 +752,14 @@ static ssize_t hm11_echo()
         //if minimum two bytes read
         if(bytes_read >= 2)
         {
-            if(bytes_read == 7)
+            if(bytes_read == 9)
             {
-                if(strncmp(receive_buf,"OK+WAKE",bytes_read)==0)
+                if(strncmp(receive_buf,"OK+WAKE",7)==0)
                 {
                     ret = 2;
                     goto free_mem;
                 }
-                else if(strncmp(receive_buf,"OK+LOST",bytes_read)==0)
+                else if(strncmp(receive_buf,"OK+LOST",7)==0)
                 {
                     ret = 1;
                     goto free_mem;
@@ -970,9 +982,47 @@ static long hm11_characteristic_notify_off(char *str)
 {
     long ret = 0;
     char characteristic_notify_off_cmd[20];
-    snprintf(characteristic_notify_off_cmd, sizeof(characteristic_notify_off_cmd), "AT+NOTIFY_OFF%s", str);
-    /*write_uart("characteristic_notify_off_cmd");
-    read_uart();*/
+    char *buf;
+    snprintf(characteristic_notify_off_cmd, sizeof(characteristic_notify_off_cmd), "AT+NOTIFYOFF%s", str);
+    ret = hm11_transmit(characteristic_notify_off_cmd,16);
+    
+    if(ret<0)
+    {
+        return ret;
+    }
+
+    buf = kmalloc(10*sizeof(char),GFP_KERNEL);
+    if(!buf)
+    {
+        return -ENOMEM;
+    }
+
+    ret = fixed_wait(buf,12);
+
+    if(ret>0)
+    {
+        if(strncmp(buf,"OK+SEND-OK",10)==0)
+        {
+            ret = 0;
+        }
+        else if(strncmp(buf,"OK+DATA-OK",10)==0)
+        {
+            ret = 0;
+        }
+        else if(strncmp(buf,"OK+SEND-ER",10)==0)
+        {
+            ret = -ENODEV;
+        }
+        else if(strncmp(buf,"OK+DATA-ER",10)==0)
+        {
+            ret = -ENODEV;
+        }
+        //Handle error
+    }
+    kfree(buf);
+
+    //Flush contents on the UART buffer
+    uart_flush_buffer();
 
     return ret;
 }
@@ -1120,8 +1170,6 @@ static ssize_t hm11_read_notified(void)
     //Read all buffer contents
     bytes_received = variable_wait_limited(buffer_contents,512);
 
-    printk("hm11: received %d bytes\n", bytes_received);
-    
     //return error
     if(bytes_received < 0)
     {

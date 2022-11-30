@@ -16,10 +16,30 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <signal.h>
 #include "../hm11_lkm/hm11_ioctl.h"
 
 #define HEART_RATE_MAC              ("0C8CDC32BDEC")
 #define HEART_RATE_CHARACTERISTIC   ("0026")
+
+static char terminated = 0;
+
+/**
+* sighandler
+* @brief Handles the SIGINT and SIGTERM signals.
+*
+* @param  int signal that triggered this function
+* @return void
+*/
+static void signalhandler(int sig)
+{
+    if(sig == SIGINT)
+    {
+       printf("Signal received, gracefully terminating server");
+    
+       terminated = 1;
+    }
+}
 
 /**
 * main
@@ -37,7 +57,7 @@ int main(int c, char **argv)
     int hm11_dev = open("/dev/hm11", O_RDWR);
     if(hm11_dev < 0)
     {
-        printf("HM-11 module could not be open.\n");
+        printf("HM-11 module could not be open: %s.\n", strerror(errno));
         return 1;
     }
 
@@ -49,6 +69,11 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("An error occured while issuing an ECHO to the HM11 module: %s\n", strerror(ret));
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        return 1;
     }
     switch(char_ret)
     {
@@ -69,7 +94,10 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("Setting the device to default did not perform successfully: %s\n", strerror(ret));
-        printf("Terminating program.\n");
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
         return 1;
     }
     else
@@ -84,6 +112,10 @@ int main(int c, char **argv)
     if(!cmd_str.str)
     {
         printf("Mallocing of a command string has not been possible, aborting.\n");
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
         return 1;
     }
     cmd_str.str[0] = '1';
@@ -91,6 +123,11 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("An error occurred setting the device as Controller: %s\n", strerror(ret));
+        free(cmd_str.str);
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
         return 1;
     }
     else
@@ -105,6 +142,10 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("Could not set device to passive mode, aborting.\n");
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
         return 1;
     }
     else
@@ -119,6 +160,10 @@ int main(int c, char **argv)
     if(!cmd_str.str)
     {
         printf("Mallocing of a command string has not been possible, aborting.\n");
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
         return 1;
     }
     strncpy(cmd_str.str, HEART_RATE_MAC, MAC_SIZE_STR);
@@ -127,6 +172,11 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("Could not connect to the device, aborting: %s\n", strerror(ret));
+        free(cmd_str.str);
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
         return 1;
     }
     else
@@ -141,6 +191,10 @@ int main(int c, char **argv)
     if(!cmd_str.str)
     {
         printf("Mallocing of a command string has not been possible, aborting.\n");
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
         return 1;
     }
     strncpy(cmd_str.str, HEART_RATE_CHARACTERISTIC, CHARACTERISTIC_SIZE_STR);
@@ -149,6 +203,10 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("Could not request characteristic notify: %s\n", strerror(ret));
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
         return 1;
     }
     else
@@ -157,9 +215,34 @@ int main(int c, char **argv)
     }
     free(cmd_str.str);
 
-    //At this point, notification values will be received by the drivers; read most recent 2s
+    //Set a signal handler to gracefully terminate the server
+    struct sigaction action;
+    action.sa_handler = signalhandler;
+    action.sa_flags = 0;
+    sigset_t empty;
+    if(sigemptyset(&empty) == -1)
+    {
+        printf("Could not set up empty signal set: %s.", strerror(errno));
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        return 1;
+    }
+    action.sa_mask = empty;
+    if(sigaction(SIGINT, &action, NULL) == -1)
+    {
+        printf("Could not set up handle for SIGINT: %s.", strerror(errno));
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        return 1;
+    }
+
+    //At this point, notification values will be received by the drivers; read most recent every 2s
     char heart_rate;
-    while(1)
+    while(!terminated)
     {
         sleep(2);
         printf("Getting heart rate values...\n");
@@ -167,14 +250,78 @@ int main(int c, char **argv)
         if(ret)
         {
             printf("Could not read notified heart rate value: %s\n", strerror(ret));
+            if(close(hm11_dev))
+            {
+                printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+            }
             return 1;
         }
         else
         {
-            printf("The current heart rate is: %d", heart_rate);
+            printf("The current heart rate is: %d\n", heart_rate);
         }
         
     }
 
+    //Unsubscribe to the notified value
+    cmd_str.str = malloc(sizeof(char)*CHARACTERISTIC_SIZE_STR);
+    if(!cmd_str.str)
+    {
+        printf("Mallocing of a command string has not been possible, aborting.\n");
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        return 1;
+    }
+    strncpy(cmd_str.str, HEART_RATE_CHARACTERISTIC, CHARACTERISTIC_SIZE_STR);
+    cmd_str.str_len = CHARACTERISTIC_SIZE_STR;
+    ret = ioctl(hm11_dev, HM11_CHARACTERISTIC_NOTIFY_OFF, &cmd_str);
+    if(ret)
+    {
+        printf("Could not request characteristic unnotify: %s\n", strerror(ret));
+        free(cmd_str.str);
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        return 1;
+    }
+    else
+    {
+        printf("Characteristic successfully unsubscribed for notification.\n");
+    }
+    free(cmd_str.str);
+
+    //Disconnect device
+    printf("Performing sanity check...\n");
+    ret = ioctl(hm11_dev, HM11_ECHO, &char_ret);
+    if(ret)
+    {
+        printf("An error occured while issuing an ECHO to the HM11 module: %s\n", strerror(ret));
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        return 1;
+    }
+    switch(char_ret)
+    {
+    case 0:
+        printf("Echo performed successfully, device was unexpectedly idle.\n");
+        break;
+    case 1:
+        printf("Echo performed successfully, device has been disconnected from its peer.\n");
+        break;
+    case 2:
+        printf("Echo performed successfully, device has been awaken from sleep.\n");
+        break;
+    }
+
+    //Close file descriptor
+    if(close(hm11_dev))
+    {
+        printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+    }
     return 0;
 }

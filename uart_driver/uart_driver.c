@@ -96,11 +96,12 @@ EXPORT_SYMBOL(uart_receive);
 //UART send from another LKM
 ssize_t uart_send(const char *buf, size_t len);
 EXPORT_SYMBOL(uart_send);
-
-
 //UART receive from another LKM
 ssize_t uart_receive_timeout(char *buf, size_t size,int msecs);
 EXPORT_SYMBOL(uart_receive_timeout);
+//Flush buffer contents
+void uart_flush_buffer(void);
+EXPORT_SYMBOL(uart_flush_buffer);
 
 //Routine to read from serial device registers
 static unsigned int reg_read(struct uart_serial_dev *dev, int offset);
@@ -309,6 +310,15 @@ ssize_t uart_send(const char *buf, size_t len)
         }
     }
     return len;
+}
+
+/*********************************************************/
+void uart_flush_buffer(void)
+{
+    spin_lock_irqsave(&hlm_dev->lock, hlm_dev->irqFlags);
+    hlm_dev->buf.read_pos = hlm_dev->buf.write_pos;
+    hlm_dev->buf.length = 0;
+    spin_unlock_irqrestore(&hlm_dev->lock, hlm_dev->irqFlags);
 }
 
 
