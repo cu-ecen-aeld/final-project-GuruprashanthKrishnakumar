@@ -1127,14 +1127,14 @@ static ssize_t hm11_read_notified(void)
     index = bytes_received - 2; 
     while(!found)
     {
-        if(bytes_received[index] == HEART_RATE_ID)
+        if(buffer_contents[index] == HEART_RATE_ID)
             found = 1;
         else
             index--;
     }
 
     //Return the value right after the identifier found
-    return bytes_received[index + 1];
+    return buffer_contents[index + 1];
 }
 
 module_init(hm11_init_module);
