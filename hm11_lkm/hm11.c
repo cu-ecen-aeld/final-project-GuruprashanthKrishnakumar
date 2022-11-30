@@ -832,7 +832,7 @@ static long hm11_mac_connect(char *str)
             {
                 if(strncmp(receive_buf,"OK+CONN",7)==0)
                 {
-                    ret = -ENODEV;
+                    ret = 0;
                     goto free_mem;
                 }
                 //HANDLE GARBAGE CASE: 7 bytes were read but it was not OK+CONN
