@@ -157,5 +157,23 @@ int main(int c, char **argv)
     }
     free(cmd_str.str);
 
+    //At this point, notification values will be received by the drivers; read most recent 2s
+    char heart_rate;
+    while(1)
+    {
+        sleep(2);
+        ret = ioctl(hm11_dev, HM11_READ_NOTIFIED, &heart_rate);
+        if(ret)
+        {
+            printf("Could read notified heart rate value: %s\n", strerror(ret));
+            return 1;
+        }
+        else
+        {
+            printf("The current heart rate is: %d", heart_rate);
+        }
+        
+    }
+
     return 0;
 }

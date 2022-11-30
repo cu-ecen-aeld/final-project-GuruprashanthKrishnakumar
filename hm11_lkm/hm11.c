@@ -17,6 +17,8 @@
 #include <linux/slab.h>
 #include "hm11_ioctl.h"
 
+#define HEART_RATE_ID   (0x16)
+
 MODULE_AUTHOR("Jordi Cros Mompart");
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -44,6 +46,7 @@ static void hm11_set_name(char *str);
 static ssize_t hm11_reset(void);
 static ssize_t hm11_set_role(char *str);
 static void hm11_sleep(void);
+static ssize_t hm11_read_notified(void);
 
 
 //static struct hm11_ioctl_str devices = {NULL,0};
@@ -118,7 +121,6 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
                 ret_val = -EFAULT;
             }
         }
-
 
         break;
     case HM11_MAC_RD:
@@ -425,6 +427,23 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         hm11_sleep();
 
         break;
+    case HM11_READ_NOTIFIED:
+        printk("hm11: Reading most recent notified value...\n");
+        res = hm11_read_notified();
+        if(res < 0)
+        {
+            ret_val = res;
+            //RETURN ERROR
+        }
+        else
+        {
+            if (copy_to_user((void __user *)arg, &res, sizeof(char)))
+            {
+                ret_val = -EFAULT;
+            }
+        }
+
+        break;
     default:
         printk("hm11: Invalid ioctl command.\n");
         ret_val = -ENOTTY;
@@ -499,9 +518,8 @@ static ssize_t fixed_wait(char *buf, size_t len)
     int ret;
     while(num_bytes_received < len)
     {
-        //receive one byte at a time with a gap of 1000 ms 
         ret = uart_receive(&buf[num_bytes_received],1);
-        //return value of 0 indicates, timeout occured and no bytes were read
+
         if(ret < 0)
         {
             if(ret == -EINTR)
@@ -1084,6 +1102,39 @@ static void hm11_sleep()
 {
     /*write_uart("AT+SLEEP");
     read_uart();*/
+}
+
+static ssize_t hm11_read_notified(void)
+{
+    ssize_t bytes_received = 0;
+    ssize_t index = 0;
+    char found = 0;
+
+    char buffer_contents[512];
+
+    //Read all buffer contents
+    bytes_received = variable_wait_limited(buffer_contents,512);
+    
+    //return error
+    if(bytes_received < 0)
+    {
+        return bytes_received;
+    }
+
+    //Look for the starting byte of a notification message, starting from the end
+    //so the last value is returned to user-space
+    // -2 is used because the buffer might contain the identifier at its last position, and no data is found after that
+    index = bytes_received - 2; 
+    while(!found)
+    {
+        if(bytes_received[index] == HEART_RATE_ID)
+            found = 1;
+        else
+            index--;
+    }
+
+    //Return the value right after the identifier found
+    return bytes_received[index + 1];
 }
 
 module_init(hm11_init_module);

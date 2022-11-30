@@ -108,9 +108,12 @@ struct hm11_ioctl_str
 //Sleep command
 #define HM11_SLEEP  _IO(HM11_IOC_MAGIC, 18)
 
+//Read most recent notified value
+#define HM11_READ_NOTIFIED _IOR(HM11_IOC_MAGIC, 19, char)
+
 /**
  * The maximum number of commands supported, used for bounds checking
  */
-#define HM11_IOC_MAXNR 18
+#define HM11_IOC_MAXNR 19
 
 #endif /* HM11_IOCTL_H */
