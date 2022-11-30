@@ -344,10 +344,7 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         printk("hm11: Stopping subscription to a characteristic notification...\n");
         str = kmalloc(sizeof(char)*CHARACTERISTIC_SIZE_STR, GFP_KERNEL);
         if(!str)
-        {
-            printk("Could not malloc outside notifyoff handler before the response\n");
             return -ENOMEM;
-        }
         
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
         {
@@ -367,6 +364,7 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         }
 
         ret_val = hm11_characteristic_notify_off(str);
+        printk("Retval %d\n", ret_val);
 
         //Free the used space
         free_mem_notif_off:
@@ -988,7 +986,6 @@ static long hm11_characteristic_notify_off(char *str)
     char *buf;
     snprintf(characteristic_notify_off_cmd, sizeof(characteristic_notify_off_cmd), "AT+NOTIFYOFF%s", str);
     ret = hm11_transmit(characteristic_notify_off_cmd,16);
-    printk("Transmitted notifyoff with return value %d\n", ret);
     
     if(ret<0)
     {
@@ -998,7 +995,6 @@ static long hm11_characteristic_notify_off(char *str)
     buf = kmalloc(10*sizeof(char),GFP_KERNEL);
     if(!buf)
     {
-        printk("Could not malloc inside notifyoff handler after the response\n");
         return -ENOMEM;
     }
 
@@ -1008,18 +1004,22 @@ static long hm11_characteristic_notify_off(char *str)
     {
         if(strncmp(buf,"OK+SEND-OK",10)==0)
         {
+            printk("HI\n");
             ret = 0;
         }
         else if(strncmp(buf,"OK+DATA-OK",10)==0)
         {
+            printk("HI2\n");
             ret = 0;
         }
         else if(strncmp(buf,"OK+SEND-ER",10)==0)
         {
+            printk("HI3\n");
             ret = -ENODEV;
         }
         else if(strncmp(buf,"OK+DATA-ER",10)==0)
         {
+            printk("HI4\n");
             ret = -ENODEV;
         }
         //Handle error
@@ -1028,6 +1028,8 @@ static long hm11_characteristic_notify_off(char *str)
 
     //Flush contents on the UART buffer
     uart_flush_buffer();
+
+    printk("returning %d\n", ret);
 
     return ret;
 }
