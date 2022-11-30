@@ -26,14 +26,17 @@ static struct cdev cdev;
 
 static ssize_t hm11_transmit(char *buf, size_t len);
 static ssize_t variable_wait_limited(char *buf, size_t len);
+static ssize_t reallocate_memory_if(int condition,struct hm11_ioctl_str *buf,size_t packet_length);
+static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_ioctl_str *buf);
+
 static ssize_t hm11_echo(void);
 static void hm11_mac_read(char *str);
 static void hm11_mac_write(char *str);
 static long hm11_connect_last(void);
 static long hm11_mac_connect(char *str);
 static void hm11_discover(char *str);
-static void hm11_service_discover(char *str);
-static void hm11_characteristic_discover(char *str);
+static ssize_t hm11_services_probe(void);
+static ssize_t hm11_characteristics_probe(void);
 static long hm11_characteristic_notify(char *str);
 static long hm11_characteristic_notify_off(char *str);
 static ssize_t hm11_passive(void);
@@ -41,6 +44,14 @@ static void hm11_set_name(char *str);
 static ssize_t hm11_reset(void);
 static ssize_t hm11_set_role(char *str);
 static void hm11_sleep(void);
+
+
+//static struct hm11_ioctl_str devices = {NULL,0};
+static size_t service_str_num_chars_to_copy = 0;
+static struct hm11_ioctl_str services = {NULL,0};
+static size_t characteristics_str_num_chars_to_copy = 0;
+static struct hm11_ioctl_str characteristics = {NULL,0};
+
 
 extern ssize_t uart_send(const char *buf, size_t size);
 extern ssize_t uart_receive(char *buf, size_t size);
@@ -206,50 +217,90 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         kfree(str);
 
         break;
+    case HM11_SERVICE_DISCOVER_PROBE:
+        res = hm11_services_probe();
+        if(res < 0)
+        {
+            ret_val = res;
+            //RETURN ERROR
+        }
+        else
+        {
+            struct hm11_ioctl_str copy_struct = {NULL,res};
+            if (copy_to_user((void __user *)arg, &copy_struct, sizeof(struct hm11_ioctl_str)))
+            {
+                ret_val = -EFAULT;
+            }
+        }
+        break;
     case HM11_SERVICE_DISCOVER:
         printk("hm11: Performing service discovery on the connected device...\n");
 
-        //TODO: check if device is connected
-
-        str = kmalloc(sizeof(char)*1024, GFP_KERNEL);
-        if(!str)
-            return -ENOMEM;
-        
+        if(!service_str_num_chars_to_copy)
+        {
+            return -EINVAL;
+        }
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
+        {
             return -EFAULT;
-        if (ioctl_str.str_len < 1024)
+        }
+        if (ioctl_str.str_len != (service_str_num_chars_to_copy + 1))
+        {
             return -EOVERFLOW;
-        
-        hm11_service_discover(str);
-
-        if (copy_to_user((void __user *)ioctl_str.str, str, MAC_SIZE_STR))
+        }
+        if (copy_to_user((void __user *)ioctl_str.str, services.str, service_str_num_chars_to_copy))
+        {
             return -EFAULT;
+        }
+        else
+        {
+            kfree(services.str);
+            services.str_len = 0;
+            service_str_num_chars_to_copy = 0;
+        }
 
-        //Free the used space
-        kfree(str);
-
+        break;
+    case HM11_CHARACTERISTIC_DISCOVER_PROBE:
+        res = hm11_characteristics_probe();
+        if(res < 0)
+        {
+            ret_val = res;
+            //RETURN ERROR
+        }
+        else
+        {
+            struct hm11_ioctl_str copy_struct = {NULL,res};
+            if (copy_to_user((void __user *)arg, &copy_struct, sizeof(struct hm11_ioctl_str)))
+            {
+                ret_val = -EFAULT;
+            }
+        }
         break;
     case HM11_CHARACTERISTIC_DISCOVER:
         printk("hm11: Performing characteristic discovery on the connected device...\n");
 
-        //TODO: check if device is connected
-
-        str = kmalloc(sizeof(char)*1024, GFP_KERNEL);
-        if(!str)
-            return -ENOMEM;
-        
+        if(!characteristics_str_num_chars_to_copy)
+        {
+            return -EINVAL;
+        }
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
+        {
             return -EFAULT;
-        if (ioctl_str.str_len < 1024)
+        }
+        if (ioctl_str.str_len != (characteristics_str_num_chars_to_copy + 1))
+        {
             return -EOVERFLOW;
-        
-        hm11_characteristic_discover(str);
-
-        if (copy_to_user((void __user *)ioctl_str.str, str, MAC_SIZE_STR))
+        }
+        if (copy_to_user((void __user *)ioctl_str.str, characteristics.str, characteristics_str_num_chars_to_copy))
+        {
             return -EFAULT;
-
-        //Free the used space
-        kfree(str);
+        }
+        else
+        {
+            kfree(characteristics.str);
+            characteristics_str_num_chars_to_copy = 0;
+            characteristics.str_len = 0;
+        }
 
         break;
     case HM11_CHARACTERISTIC_NOTIFY:
@@ -508,6 +559,135 @@ static ssize_t variable_wait_limited(char *buf, size_t len)
         return num_bytes_received;
 }
 
+
+static ssize_t reallocate_memory_if(int condition,struct hm11_ioctl_str *buf,size_t packet_length)
+{
+    char *tmp;
+    if(condition)
+    {
+        tmp = krealloc(buf->str,((buf->str_len+packet_length)*sizeof(char)),GFP_KERNEL);
+        {
+            if(!tmp)
+            {
+                return -ENOMEM;
+            }
+            buf->str = tmp;
+            buf->str_len += packet_length;
+        }
+    }
+    return condition;
+}
+
+/*
+*   Function to read data delimited by a delimiting character of certain length (for e.g. 56 "*"s)
+*   For e.g.,
+*   The AT+FINDSERVICES? command finds services
+*   56 bytes of '*'s at the start
+*   Each service has 14 bytes of data-> 4 bytes of start handle:4 bytes of end handle:4 bytes of UUID
+*   56 bytes of of '*'s at the end
+*   The return string is formatted in such a way that the '*'s are not included in the string and each service is seperated by ','
+*/
+
+static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_ioctl_str *buf)
+{
+    size_t num_bytes_read = 0;
+    ssize_t ret = 0;
+    char c;
+    //accounting for the ',' at the end
+    size_t packet_length = unit_length + 1;
+    //ignore the first 56 bytes
+    while(num_bytes_read < 56)
+    {
+        ret = fixed_wait(&c,1);
+        if(ret<0)
+        {
+            return ret;
+        }
+        num_bytes_read +=1;
+    }
+
+    num_bytes_read = 0;
+    while(true)
+    {
+        //malloc the first time through
+        if(!buf->str_len)
+        {
+            buf->str = kmalloc(packet_length*sizeof(char),GFP_KERNEL);
+            if(!buf->str)
+            {
+                return -ENOMEM;
+            }
+            buf->str_len +=packet_length;
+        }
+        //read the character from receive buffer
+        ret = fixed_wait(&c,1);
+        if(ret<0)
+        {
+            break;
+        }
+        //if * was received, that means the end string has begun, hence break out
+        else if(c == '\r')
+        {
+            //read the \n as well
+            ret = fixed_wait(&c,1);
+            //read the new character
+            ret = fixed_wait(&c,1);
+            if(c == '*')
+            {
+                break;
+            }
+            else
+            {
+                ret = reallocate_memory_if(((buf->str_len - num_bytes_read)<2),buf,packet_length);
+                if(ret < 0)
+                {
+                    break;
+                }
+                //the first service/character entry does not need a ','
+                if(num_bytes_read)
+                {
+                    buf->str[num_bytes_read] = ',';
+                    num_bytes_read += 1;
+                }
+
+                buf->str[num_bytes_read] = c;
+                num_bytes_read += 1;
+            }
+        }
+        else
+        {
+            ret = reallocate_memory_if(((buf->str_len - num_bytes_read)<1),buf,packet_length);
+            if(ret < 0)
+            {
+                break;
+            }
+            buf->str[num_bytes_read] = c;
+            num_bytes_read +=1;
+        }
+    }
+    if(ret<0)
+    {
+        kfree(buf->str);
+        buf->str_len = 0;
+        return ret;
+    }
+    ret = num_bytes_read;
+    //ignore the end terminating bytes which will just be '*'s
+    while(num_bytes_read < (ret + 56))
+    {
+        fixed_wait(&c,1);
+        num_bytes_read++;
+    }
+    //if memory was allocated but no characters were read
+    if(!ret)
+    {
+        kfree(buf->str);
+        //if no characters were read str_len of 0 will catch that there's no characters to be copied and return an error.
+        buf->str_len = ret;
+    }
+    return ret;
+}
+
 static ssize_t hm11_echo()
 {
     ssize_t ret = 0, bytes_read = 0;
@@ -671,16 +851,54 @@ static void hm11_discover(char *str)
     read_uart();*/
 }
 
-static void hm11_service_discover(char *str)
+static ssize_t hm11_services_probe(void)
 {
-    /*write_uart("AT+FINDSERVICES?");
-    read_uart();*/
+    ssize_t ret = 0;
+    ret = hm11_transmit("AT+FINDSERVICES?",16);
+    if(ret<0)
+    {
+        return ret;
+    }
+    //unit length:
+    //P1: 4 Bytes, Services start handle.
+    //P2: 4 Bytes, Services end handle
+    //P3: Services UUID (upto 16 bytes)
+    //P1:P2:P3
+    //4+1+4+1+16 = 26 
+    ret = parse_response_by_delimiter_char(26,&services);
+    if(ret<0)
+    {
+        service_str_num_chars_to_copy = 0;
+        return ret;
+    }
+    service_str_num_chars_to_copy = ret;
+    //convention to require one more byte than actually needed.
+    return (ret + 1);
 }
 
-static void hm11_characteristic_discover(char *str)
+static ssize_t hm11_characteristics_probe(void)
 {
-    /*write_uart("AT+FINDALLCHARS?");
-    read_uart();*/
+    ssize_t ret = 0;
+    ret = hm11_transmit("AT+FINDALLCHARS?",16);
+    if(ret<0)
+    {
+        return ret;
+    }
+    //unit length:
+    //P1 - 4 Bytes, Characteristic handle.
+    //P2 - 14 Bytes, “RD|WR|WN|NO|IN” 
+    //P3 - Characteristic UUID (assumed to be 16 bytes since it can be max that)
+    //P1:P2:P3
+    //4+1+14+1+16 = 36 
+    ret = parse_response_by_delimiter_char(36,&characteristics);
+    if(ret<0)
+    {
+        characteristics_str_num_chars_to_copy = 0;
+        return ret;
+    }
+    characteristics_str_num_chars_to_copy = ret;
+    //convention to require one more byte than actually needed.
+    return (ret + 1);
 }
 
 static long hm11_characteristic_notify(char *str)

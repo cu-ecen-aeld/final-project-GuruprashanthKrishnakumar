@@ -63,49 +63,54 @@ struct hm11_ioctl_str
     //If return value == -EBUSY, the device has already an active connection
 #define HM11_CONN_MAC _IOW(HM11_IOC_MAGIC, 5, struct hm11_ioctl_str)
 
+#define HM11_DISCOVER_PROBE _IOR(HM11_IOC_MAGIC, 6, struct hm11_ioctl_str)
+
 //Discover devices
     //The string provided must have space for up to 100 MAC addresses
-#define HM11_DISCOVER _IOR(HM11_IOC_MAGIC, 6, struct hm11_ioctl_str)
+#define HM11_DISCOVER _IOR(HM11_IOC_MAGIC, 7, struct hm11_ioctl_str)
 
+
+#define HM11_SERVICE_DISCOVER_PROBE  _IOR(HM11_IOC_MAGIC, 8, struct hm11_ioctl_str)
 //Find services on connected device
     //TODO define max size expected. For now, 1024 characters
-#define HM11_SERVICE_DISCOVER  _IOR(HM11_IOC_MAGIC, 7, struct hm11_ioctl_str)
+#define HM11_SERVICE_DISCOVER  _IOR(HM11_IOC_MAGIC, 9, struct hm11_ioctl_str)
 
+
+#define HM11_CHARACTERISTIC_DISCOVER_PROBE  _IOR(HM11_IOC_MAGIC, 10, struct hm11_ioctl_str)
 //Find characteristics on connected device
     //TODO define max size expected. For now, 1024 characters
-#define HM11_CHARACTERISTIC_DISCOVER  _IOR(HM11_IOC_MAGIC, 8, struct hm11_ioctl_str)
+#define HM11_CHARACTERISTIC_DISCOVER  _IOR(HM11_IOC_MAGIC, 11, struct hm11_ioctl_str)
 
 //Subscribe to a characteristic notification
     //If return value == 0, subscription is successful
     //If return value == -ENODEV, the characteristic cannot handle subscription or doesn't exist
-#define HM11_CHARACTERISTIC_NOTIFY  _IOW(HM11_IOC_MAGIC, 9, struct hm11_ioctl_str)
+#define HM11_CHARACTERISTIC_NOTIFY  _IOW(HM11_IOC_MAGIC, 12, struct hm11_ioctl_str)
 
 //Unsubscribe to a characteristic notification
     //If return value == 0, unsubscription is successful
     //If return value == -ENODEV, the characteristic cannot handle subscription or doesn't exist
-#define HM11_CHARACTERISTIC_NOTIFY_OFF  _IOW(HM11_IOC_MAGIC, 10, struct hm11_ioctl_str)
+#define HM11_CHARACTERISTIC_NOTIFY_OFF  _IOW(HM11_IOC_MAGIC, 13, struct hm11_ioctl_str)
 
 //Let device not perform any automatic work
-#define HM11_PASSIVE    _IO(HM11_IOC_MAGIC, 11)
+#define HM11_PASSIVE    _IO(HM11_IOC_MAGIC, 14)
 
 //Set device name
-#define HM11_NAME   _IOW(HM11_IOC_MAGIC, 12, struct hm11_ioctl_str)
+#define HM11_NAME   _IOW(HM11_IOC_MAGIC, 15, struct hm11_ioctl_str)
 
 //Reset command
-#define HM11_DEFAULT _IO(HM11_IOC_MAGIC, 13)
+#define HM11_DEFAULT _IO(HM11_IOC_MAGIC, 16)
 
 //Role command
     //"1" for Master
     //"0" for Peripheral
-#define HM11_ROLE   _IOW(HM11_IOC_MAGIC, 14, struct hm11_ioctl_str)
+#define HM11_ROLE   _IOW(HM11_IOC_MAGIC, 17, struct hm11_ioctl_str)
 
 //Sleep command
-#define HM11_SLEEP  _IO(HM11_IOC_MAGIC, 15)
-
+#define HM11_SLEEP  _IO(HM11_IOC_MAGIC, 18)
 
 /**
  * The maximum number of commands supported, used for bounds checking
  */
-#define HM11_IOC_MAXNR 15
+#define HM11_IOC_MAXNR 18
 
 #endif /* HM11_IOCTL_H */
