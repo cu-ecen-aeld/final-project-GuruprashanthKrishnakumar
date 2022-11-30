@@ -1,4 +1,4 @@
-0xeb4274f2	uart_receive	        EXPORT_SYMBOL
-0xa36cdbc9	uart_receive_timeout	EXPORT_SYMBOL
-0x0b5ee339	uart_flush_buffer		EXPORT_SYMBOL
-0x779132c8	uart_send		        EXPORT_SYMBOL
+0xeb4274f2	uart_receive	/home/CROS/final-project-jordicrosmompart/buildroot/output/build/uartlkm-8758608c5c6f151205642f63043e218d9252ee94/uart_driver/uart_driver	EXPORT_SYMBOL
+0xa36cdbc9	uart_receive_timeout	/home/CROS/final-project-jordicrosmompart/buildroot/output/build/uartlkm-8758608c5c6f151205642f63043e218d9252ee94/uart_driver/uart_driver	EXPORT_SYMBOL
+0x0b5ee339	uart_flush_buffer	/home/CROS/final-project-jordicrosmompart/buildroot/output/build/uartlkm-8758608c5c6f151205642f63043e218d9252ee94/uart_driver/uart_driver	EXPORT_SYMBOL
+0x779132c8	uart_send	/home/CROS/final-project-jordicrosmompart/buildroot/output/build/uartlkm-8758608c5c6f151205642f63043e218d9252ee94/uart_driver/uart_driver	EXPORT_SYMBOL
