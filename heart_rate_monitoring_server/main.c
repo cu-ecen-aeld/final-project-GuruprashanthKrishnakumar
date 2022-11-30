@@ -35,7 +35,7 @@ static void signalhandler(int sig)
 {
     if(sig == SIGINT)
     {
-       printf("Signal received, gracefully terminating server");
+       printf("Signal received, gracefully terminating server.\n");
     
        terminated = 1;
     }
@@ -294,7 +294,7 @@ int main(int c, char **argv)
     free(cmd_str.str);
 
     //Disconnect device
-    printf("Performing sanity check...\n");
+    printf("Disconnecting from peer device...\n");
     ret = ioctl(hm11_dev, HM11_ECHO, &char_ret);
     if(ret)
     {

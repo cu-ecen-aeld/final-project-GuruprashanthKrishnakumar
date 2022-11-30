@@ -364,7 +364,6 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         }
 
         ret_val = hm11_characteristic_notify_off(str);
-        printk("Retval %d\n", ret_val);
 
         //Free the used space
         free_mem_notif_off:
@@ -985,6 +984,10 @@ static long hm11_characteristic_notify_off(char *str)
     char characteristic_notify_off_cmd[20];
     char *buf;
     snprintf(characteristic_notify_off_cmd, sizeof(characteristic_notify_off_cmd), "AT+NOTIFYOFF%s", str);
+
+    //Flush contents on the UART buffer
+    uart_flush_buffer();
+
     ret = hm11_transmit(characteristic_notify_off_cmd,16);
     
     if(ret<0)
@@ -1004,30 +1007,23 @@ static long hm11_characteristic_notify_off(char *str)
     {
         if(strncmp(buf,"OK+SEND-OK",10)==0)
         {
-            printk("HI\n");
             ret = 0;
         }
         else if(strncmp(buf,"OK+DATA-OK",10)==0)
         {
-            printk("HI2\n");
             ret = 0;
         }
         else if(strncmp(buf,"OK+SEND-ER",10)==0)
         {
-            printk("HI3\n");
             ret = -ENODEV;
         }
         else if(strncmp(buf,"OK+DATA-ER",10)==0)
         {
-            printk("HI4\n");
             ret = -ENODEV;
         }
         //Handle error
     }
     kfree(buf);
-
-    //Flush contents on the UART buffer
-    uart_flush_buffer();
 
     printk("returning %d\n", ret);
 
