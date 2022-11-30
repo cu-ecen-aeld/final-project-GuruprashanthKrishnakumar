@@ -1,0 +1,4 @@
+0xeb4274f2	uart_receive	        EXPORT_SYMBOL
+0xa36cdbc9	uart_receive_timeout	EXPORT_SYMBOL
+0x0b5ee339	uart_flush_buffer		EXPORT_SYMBOL
+0x779132c8	uart_send		        EXPORT_SYMBOL
