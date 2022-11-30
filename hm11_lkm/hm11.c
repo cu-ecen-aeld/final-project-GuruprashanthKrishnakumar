@@ -430,10 +430,15 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     case HM11_READ_NOTIFIED:
         printk("hm11: Reading most recent notified value...\n");
         res = hm11_read_notified();
+        printk("hm11: obtained value: %d", res);
         if(res < 0)
         {
             ret_val = res;
             //RETURN ERROR
+        }
+        else if(res == 0)
+        {
+            ret_val = -EAGAIN;
         }
         else
         {
@@ -1114,18 +1119,24 @@ static ssize_t hm11_read_notified(void)
 
     //Read all buffer contents
     bytes_received = variable_wait_limited(buffer_contents,512);
+
+    printk("hm11: received %d bytes\n", bytes_received);
     
     //return error
     if(bytes_received < 0)
     {
         return bytes_received;
     }
+    else if(bytes_received < 2)
+    {
+        return 0;
+    }
 
     //Look for the starting byte of a notification message, starting from the end
     //so the last value is returned to user-space
     // -2 is used because the buffer might contain the identifier at its last position, and no data is found after that
     index = bytes_received - 2; 
-    while(!found)
+    while(!found && index >= 0)
     {
         if(buffer_contents[index] == HEART_RATE_ID)
             found = 1;
@@ -1133,8 +1144,11 @@ static ssize_t hm11_read_notified(void)
             index--;
     }
 
-    //Return the value right after the identifier found
-    return buffer_contents[index + 1];
+    if(index < 0)
+        return 0;
+    else
+        //Return the value right after the identifier found
+        return buffer_contents[index + 1];
 }
 
 module_init(hm11_init_module);

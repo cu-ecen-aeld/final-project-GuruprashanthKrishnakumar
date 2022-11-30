@@ -162,10 +162,11 @@ int main(int c, char **argv)
     while(1)
     {
         sleep(2);
+        printf("Getting heart rate values...\n");
         ret = ioctl(hm11_dev, HM11_READ_NOTIFIED, &heart_rate);
         if(ret)
         {
-            printf("Could read notified heart rate value: %s\n", strerror(ret));
+            printf("Could not read notified heart rate value: %s\n", strerror(ret));
             return 1;
         }
         else
