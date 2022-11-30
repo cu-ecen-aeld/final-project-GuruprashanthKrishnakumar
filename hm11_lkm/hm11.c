@@ -995,13 +995,15 @@ static long hm11_characteristic_notify_off(char *str)
         return ret;
     }
 
-    buf = kmalloc(10*sizeof(char),GFP_KERNEL);
+    buf = kmalloc(13*sizeof(char),GFP_KERNEL);
     if(!buf)
     {
         return -ENOMEM;
     }
 
     ret = fixed_wait(buf,12);
+    buf[12] = 0;
+    printk("Buffer contents: %s", buf);
 
     if(ret>0)
     {
