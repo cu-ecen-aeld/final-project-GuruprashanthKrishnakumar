@@ -344,7 +344,10 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         printk("hm11: Stopping subscription to a characteristic notification...\n");
         str = kmalloc(sizeof(char)*CHARACTERISTIC_SIZE_STR, GFP_KERNEL);
         if(!str)
+        {
+            printk("Could not malloc outside notifyoff handler before the response\n");
             return -ENOMEM;
+        }
         
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
         {
@@ -985,6 +988,7 @@ static long hm11_characteristic_notify_off(char *str)
     char *buf;
     snprintf(characteristic_notify_off_cmd, sizeof(characteristic_notify_off_cmd), "AT+NOTIFYOFF%s", str);
     ret = hm11_transmit(characteristic_notify_off_cmd,16);
+    printk("Transmitted notifyoff with return value %d\n", ret);
     
     if(ret<0)
     {
@@ -994,6 +998,7 @@ static long hm11_characteristic_notify_off(char *str)
     buf = kmalloc(10*sizeof(char),GFP_KERNEL);
     if(!buf)
     {
+        printk("Could not malloc inside notifyoff handler after the response\n");
         return -ENOMEM;
     }
 
