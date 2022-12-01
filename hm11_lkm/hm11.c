@@ -27,7 +27,7 @@ static int hm11_minor =   0;
 static struct cdev cdev;
 
 static ssize_t hm11_transmit(char *buf, size_t len);
-static ssize_t variable_wait_limited(char *buf, size_t len);
+static ssize_t variable_wait_limited(char *buf, size_t len, size_t timeout);
 static ssize_t reallocate_memory_if(int condition,struct hm11_ioctl_str *buf,size_t packet_length);
 static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_ioctl_str *buf);
 
@@ -558,14 +558,14 @@ static ssize_t fixed_wait(char *buf, size_t len)
     return num_bytes_received;  
 }
 
-static ssize_t variable_wait_limited(char *buf, size_t len)
+static ssize_t variable_wait_limited(char *buf, size_t len, size_t timeout)
 {
     size_t num_bytes_received = 0;
     int ret;
     while(num_bytes_received < len)
     {
         //receive one byte at a time with a gap of 1000 ms 
-        ret = uart_receive_timeout(&buf[num_bytes_received],1,1000);
+        ret = uart_receive_timeout(&buf[num_bytes_received],1,timeout);
         //return value of 0 indicates, timeout occured and no bytes were read
         if(ret == 0)
         {
@@ -742,7 +742,7 @@ static ssize_t hm11_echo()
     //unconditional wait for two bytes (since we expect a minimum of two bytes) and optional wait for more (upto 7)
     while(bytes_read <2)
     {
-        ret = variable_wait_limited(&receive_buf[bytes_read],(7 - bytes_read));
+        ret = variable_wait_limited(&receive_buf[bytes_read],(7 - bytes_read), 1000);
         //return error
         if(ret < 0)
         {
@@ -834,7 +834,7 @@ static long hm11_mac_connect(char *str)
     }
     while(bytes_read <9)
     {
-        ret = variable_wait_limited(&receive_buf[bytes_read],(10 - bytes_read));
+        ret = variable_wait_limited(&receive_buf[bytes_read],(10 - bytes_read), 1000);
         //return error
         if(ret < 0)
         {
@@ -983,6 +983,7 @@ static long hm11_characteristic_notify_off(char *str)
     long ret = 0;
     char characteristic_notify_off_cmd[20];
     char *buf;
+    char *res_start;
     snprintf(characteristic_notify_off_cmd, sizeof(characteristic_notify_off_cmd), "AT+NOTIFYOFF%s", str);
 
     //Flush contents on the UART buffer
@@ -995,37 +996,43 @@ static long hm11_characteristic_notify_off(char *str)
         return ret;
     }
 
-    buf = kmalloc(13*sizeof(char),GFP_KERNEL);
+    buf = kmalloc(512*sizeof(char),GFP_KERNEL);
     if(!buf)
     {
         return -ENOMEM;
     }
 
-    ret = fixed_wait(buf,12);
-    buf[12] = 0;
-    printk("Buffer contents: %s", buf);
+    ret = variable_wait_limited(buf,512,1000);
+    //Find the last "O from OK+..."
+    res_start = &buf[ret - 1 - 11];
+    res_start[12] = 0;
+    
+    printk("Buffer contents: %s", res_start);
 
     if(ret>0)
     {
-        if(strncmp(buf,"OK+SEND-OK",10)==0)
+        if(strncmp(res_start,"OK+SEND-OK\r\n",10)==0)
         {
             ret = 0;
         }
-        else if(strncmp(buf,"OK+DATA-OK",10)==0)
+        else if(strncmp(res_start,"OK+DATA-OK",10)==0)
         {
             ret = 0;
         }
-        else if(strncmp(buf,"OK+SEND-ER",10)==0)
+        else if(strncmp(res_start,"OK+SEND-ER",10)==0)
         {
             ret = -ENODEV;
         }
-        else if(strncmp(buf,"OK+DATA-ER",10)==0)
+        else if(strncmp(res_start,"OK+DATA-ER",10)==0)
         {
             ret = -ENODEV;
         }
         //Handle error
     }
     kfree(buf);
+
+    //Flush contents on the UART buffer
+    uart_flush_buffer();
 
     printk("returning %d\n", ret);
 
@@ -1173,7 +1180,7 @@ static ssize_t hm11_read_notified(void)
     char buffer_contents[512];
 
     //Read all buffer contents
-    bytes_received = variable_wait_limited(buffer_contents,512);
+    bytes_received = variable_wait_limited(buffer_contents,512,1);
 
     //return error
     if(bytes_received < 0)
