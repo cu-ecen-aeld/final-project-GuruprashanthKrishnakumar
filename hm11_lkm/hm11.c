@@ -1006,8 +1006,6 @@ static long hm11_characteristic_notify_off(char *str)
     //Find the last "O from OK+..."
     res_start = &buf[ret - 1 - 11];
     res_start[12] = 0;
-    
-    printk("Buffer contents: %s", res_start);
 
     if(ret>0)
     {
@@ -1033,8 +1031,6 @@ static long hm11_characteristic_notify_off(char *str)
 
     //Flush contents on the UART buffer
     uart_flush_buffer();
-
-    printk("returning %d\n", ret);
 
     return ret;
 }
