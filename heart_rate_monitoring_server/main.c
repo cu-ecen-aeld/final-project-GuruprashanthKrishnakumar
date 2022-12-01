@@ -250,11 +250,6 @@ int main(int c, char **argv)
         if(ret)
         {
             printf("Could not read notified heart rate value: %s\n", strerror(ret));
-            if(close(hm11_dev))
-            {
-                printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-            }
-            return 1;
         }
         else
         {
