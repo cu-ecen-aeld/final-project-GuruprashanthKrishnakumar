@@ -249,7 +249,7 @@ int main(int c, char **argv)
         ret = ioctl(hm11_dev, HM11_READ_NOTIFIED, &heart_rate);
         if(ret)
         {
-            printf("Could not read notified heart rate value: %s\n", strerror(ret));
+            printf("Could not read notified heart rate value: %d, %s\n", ret, strerror(ret));
         }
         else
         {
