@@ -35,7 +35,7 @@
 #include <linux/spinlock.h>
 #include <linux/slab.h>
 #include <linux/jiffies.h>
-
+#include <linux/mutex.h>
 
 
 #define BUFF_SIZE 512
@@ -67,7 +67,7 @@ struct uart_serial_dev
     unsigned long irqFlags;
     enum uart_number this_uart_number;
     spinlock_t lock;
-
+    struct mutex write_protect;
 };
 
 
@@ -200,6 +200,7 @@ static ssize_t uart_write(struct file *file, const char __user *buf, size_t len,
     struct uart_serial_dev *dev = container_of(mdev, struct uart_serial_dev, mDev);
     int i;
     char *kmem;
+    ssize_t retval = 0;
     if(dev->this_uart_number == UART1)
     {
         return -EINVAL;
@@ -214,7 +215,13 @@ static ssize_t uart_write(struct file *file, const char __user *buf, size_t len,
     if(copy_from_user(kmem, buf, len))
     {
         printk("uart: cannot copy memory from the user.\n");
-        return 0;
+        retval = 0;
+        goto out;
+    }
+    if (mutex_lock_interruptible(&dev->write_protect))
+    {
+        retval = -EINTR;
+        goto out;
     }
     for (i = 0; i < len; i++)
     {
@@ -228,8 +235,10 @@ static ssize_t uart_write(struct file *file, const char __user *buf, size_t len,
             write_char(dev, kmem[i]);
         }
     }
-    kfree(kmem);   
-    return len;
+    retval = len;
+    mutex_unlock(&dev->write_protect);
+    out: kfree(kmem);   
+         return retval;
 }
 
 
@@ -297,6 +306,10 @@ ssize_t uart_receive_timeout(char *buf, size_t size,int msecs)
 ssize_t uart_send(const char *buf, size_t len)
 {
     int i;
+    if (mutex_lock_interruptible(&hlm_dev->write_protect))
+    {
+        return -EINTR;
+    }
     for (i = 0; i < len; i++)
     {
         if (buf[i] == '\n')
@@ -309,6 +322,7 @@ ssize_t uart_send(const char *buf, size_t len)
             write_char(hlm_dev, buf[i]);
         }
     }
+    mutex_unlock(&hlm_dev->write_protect);
     return len;
 }
 
@@ -444,11 +458,14 @@ static int uart_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "%s: unable to request IRQ %d (%d)\n", __func__, dev->irq, ret);
 		return ret;
 	}
+    spin_lock_init(&dev->lock); 
+    mutex_init(&dev->write_protect);
     dev->buf.read_pos = 0;
     dev->buf.write_pos = 0;
     dev->buf.buff[0] = '\0';
     dev->buf.length = 0;
     init_waitqueue_head(&dev->waitQ);
+    
 
     //Enable power management runtime
     pm_runtime_enable(&pdev->dev);
@@ -507,6 +524,7 @@ static int uart_remove(struct platform_device *pdev)
     pm_runtime_disable(&pdev->dev);
     dev = dev_get_drvdata(&pdev->dev);
     misc_deregister(&dev->mDev);
+    mutex_destroy(&dev->write_protect);
     return 0;
 }
 
