@@ -17,12 +17,34 @@
 #include <errno.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <pthread.h>
 #include "../hm11_lkm/hm11_ioctl.h"
+#include "queue.h"
 
 #define HEART_RATE_MAC              ("0C8CDC32BDEC")
 #define HEART_RATE_CHARACTERISTIC   ("0026")
+#define MAX_CLIENTS                 (10)
+
+struct client_thread_t
+{
+    pthread_t thread_id;
+    int socket_client;
+    int socket_server;
+    struct sockaddr_storage client_addr;
+    char new_value_available;
+    char finished;
+
+    //Linked list node instance
+    SLIST_ENTRY(client_thread_t) node;
+};
 
 static char terminated = 0;
+static char heart_rate;
+//Linked list of threads
+SLIST_HEAD(head_s, client_thread_t) head;
 
 /**
 * sighandler
@@ -39,6 +61,186 @@ static void signalhandler(int sig)
     
        terminated = 1;
     }
+}
+
+/**
+* print_accepted_conn
+* @brief Prints the IP address used by the client socket
+*
+* @param  sockaddr_storage contains client information
+* @return void
+*/
+void print_accepted_conn(struct sockaddr_storage client_addr)
+{
+    //Get information from the client
+    //Credits: https://stackoverflow.com/questions/1276294/getting-ipv4-address-from-a-sockaddr-structure
+    if(client_addr.ss_family == AF_INET)
+    {
+        char addr[INET6_ADDRSTRLEN];
+        struct sockaddr_in *addr_in = (struct sockaddr_in *)&client_addr;
+        inet_ntop(AF_INET, &(addr_in->sin_addr), addr, INET_ADDRSTRLEN);
+        printf("Accepted connection from %s", addr);
+    }
+    else if(client_addr.ss_family == AF_INET6)
+    {
+        char addr[INET6_ADDRSTRLEN];
+        struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)&client_addr;
+        inet_ntop(AF_INET6, &(addr_in6->sin6_addr), addr, INET6_ADDRSTRLEN);
+        printf("Accepted connection from %s", addr);
+    }
+}
+
+/**
+* handle_client
+* @brief Handles a client of the socket server.
+*
+* @param  void* pointer to relevant client information
+* @return void
+*/
+static void *handle_client(void *client_info)
+{
+    struct client_thread_t *client_info_parsed = (struct client_thread_t *) client_info;
+    print_accepted_conn(client_info_parsed->client_addr);
+
+    char unused; //Server does not receive data from client
+
+    do
+    {   
+        //Check if the client has finished connection
+        if(!recv(client_info_parsed->socket_client, &unused, sizeof(char), MSG_DONTWAIT))
+            break;
+
+        //Wait for a new value to come from the HM11 driver
+        while(!client_info_parsed->new_value_available);
+        //Clear flag
+        client_info_parsed->new_value_available = 0;
+
+        //Get the value
+        char heart_rate_value = heart_rate;
+
+        //Send it to the client
+        int sent_bytes = 0;
+        while(sent_bytes != 1)
+        {
+            sent_bytes = send(client_info_parsed->socket_client, &heart_rate_value, sizeof(char), 0);
+            if(sent_bytes == -1)
+            {
+                client_info_parsed->finished = 1;
+                return NULL; //Finish connection with this socket
+            }
+        }
+        
+    } while(!terminated);
+
+    client_info_parsed->finished = 1;
+    return NULL;
+}
+
+/**
+* main_server_thread
+* @brief Handled new connections and terminations to the socket server
+*
+* @param  void* pointer to the socket value
+* @return void
+*/
+static void *main_server_thread(void *socket)
+{
+    if(!socket)
+    {
+        printf("Server thread could not be properly created since the socket pointer is NULL.\n");
+        return NULL;
+    }
+    int sck = *(int *)socket;
+
+    //Start a loop of receiving contents  
+    while(!terminated)
+    {
+        struct sockaddr_storage client_addr;
+        socklen_t addr_size = sizeof client_addr;
+
+        //Accept a connection
+        int connection_fd = accept(sck, (struct sockaddr *) &client_addr, &addr_size);
+        if(connection_fd == -1)
+        {
+            if(errno == EINTR)
+            {
+                //The signal has set "terminated" and the next while iteration will not happen
+                continue;
+            }
+            else
+            {
+                printf("An error occurred accepting a new connection to the socket: %s", strerror(errno));
+                //Implementation defined: wait for next request, not terminate server
+                continue;
+            }
+        }
+
+        //Add new service information to a new element of the thread linked list
+        struct client_thread_t *new = malloc(sizeof(struct client_thread_t));
+        new->socket_client = connection_fd;
+        new->finished = 0;
+        new->new_value_available = 0;
+        new->socket_server = sck;
+        memcpy((void *) &new->client_addr, (const void *) &client_addr, sizeof(struct sockaddr_storage));
+        
+        //Create the thread that will serve the client
+        int ret = pthread_create(&new->thread_id, NULL, handle_client, (void *) new);
+        if(ret!= 0)
+        {            
+            printf("Could not create new thread: %s", strerror(ret));
+
+            //Implementation defined: wait for next request, not terminate server
+            continue; 
+        }
+
+        //Add the thread information to the linked list
+        SLIST_INSERT_HEAD(&head, new, node);
+
+        //Perform cleaning of the current list on every new connection
+        struct client_thread_t *element = NULL;
+        struct client_thread_t *tmp = NULL;
+        SLIST_FOREACH_SAFE(element, &head, node, tmp)
+        {
+            if(element->finished)
+            {
+                SLIST_REMOVE(&head, element, client_thread_t, node);
+                //Join the thread
+                int ret = pthread_join(element->thread_id, NULL);
+                if(ret != 0)
+                {
+                    printf("Could not join thread: %s", strerror(ret));
+                    continue;  
+                }
+                //Free the memory used by the structure
+                free(element);
+            }
+        }
+    }
+
+    //Make sure all threads finish and are joined
+    while(!SLIST_EMPTY(&head))
+    {
+        struct client_thread_t *element = NULL;
+        struct client_thread_t *tmp = NULL;
+        SLIST_FOREACH_SAFE(element, &head, node, tmp)
+        {
+            if(element->finished)
+            {
+                SLIST_REMOVE(&head, element, client_thread_t, node);
+                //Join the thread
+                int ret = pthread_join(element->thread_id, NULL);
+                if(ret != 0)
+                {
+                    printf("Could not join thread: %s", strerror(ret));
+                    continue;  
+                }
+                //Free the memory used by the structure
+                free(element);
+            }
+        }
+    }
+
+    return NULL;
 }
 
 /**
@@ -240,8 +442,87 @@ int main(int c, char **argv)
         return 1;
     }
 
+    //Configure the socket server that clients will connect to get heart rate measurements
+    struct addrinfo hints;
+    //Needs to be freed after using
+    struct addrinfo *res;
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_flags = AI_PASSIVE;
+    hints.ai_socktype = SOCK_STREAM;
+    if(getaddrinfo(NULL, "9000", &hints, &res) != 0)
+    {
+        printf("An error occurred setting up the socket.\n");
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        return 1;
+    }
+
+    //Create the socket file descriptor
+    int sck = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if(sck == -1)
+    {
+        printf("An error occurred setting up the socket: %s\n", strerror(errno));
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        return 1;
+    }
+    //Bind the socket to the addr+port specified in "getaddrinfo"
+    if(bind(sck, res->ai_addr, res->ai_addrlen) == -1)
+    {
+        printf("An error occurred binding the socket: %s\n", strerror(errno));
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        return 1;      
+    }
+
+    //Free the addr linked list now that we have already used it
+    freeaddrinfo(res);
+
+    //Start listening for a max of MAX_CLIENTS connections
+    if(listen(sck, MAX_CLIENTS) == -1)
+    {
+        printf("An error occurred listening the socket: %s\n", strerror(errno));
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        if(close(sck) == -1)
+        {
+            //Else, error occurred, print it to syslog and finish program
+            printf("Could not close socket: %s\n", strerror(errno));
+        }
+        return 1;       
+    }
+    printf("The server is listening to port 9000\n");
+
+    //Initialize Liked List of client threads
+    SLIST_INIT(&head);
+
+    //Create a thread for the socket created, to wait for connections without interrumping the interaction with the driver
+    pthread_t server_thread_id;
+    ret = pthread_create(&server_thread_id, NULL, main_server_thread, (void *) &sck);
+    if(ret)
+    {            
+        printf("Could not create server thread: %s\n", strerror(ret));
+        if(close(hm11_dev))
+        {
+            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        if(close(sck) == -1)
+        {
+            //Else, error occurred, print it to syslog and finish program
+            printf("Could not close socket: %s\n", strerror(errno));
+        }
+        return 1;  
+    }
+
     //At this point, notification values will be received by the drivers; read most recent every 2s
-    char heart_rate;
     while(!terminated)
     {
         sleep(2);
@@ -254,6 +535,13 @@ int main(int c, char **argv)
         else
         {
             printf("The current heart rate is: %d\n", heart_rate);
+            //Update the flag on every existing thread
+            struct client_thread_t *element = NULL;
+            struct client_thread_t *tmp = NULL;
+            SLIST_FOREACH_SAFE(element, &head, node, tmp)
+            {
+                element->new_value_available = 1;
+            }
         }
         
     }
@@ -267,6 +555,11 @@ int main(int c, char **argv)
         {
             printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
         }
+        if(close(sck) == -1)
+        {
+            //Else, error occurred, print it to syslog and finish program
+            printf("Could not close socket: %s\n", strerror(errno));
+        }
         return 1;
     }
     strncpy(cmd_str.str, HEART_RATE_CHARACTERISTIC, CHARACTERISTIC_SIZE_STR);
@@ -279,6 +572,11 @@ int main(int c, char **argv)
         if(close(hm11_dev))
         {
             printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        if(close(sck) == -1)
+        {
+            //Else, error occurred, print it to syslog and finish program
+            printf("Could not close socket: %s\n", strerror(errno));
         }
         return 1;
     }
@@ -297,6 +595,11 @@ int main(int c, char **argv)
         if(close(hm11_dev))
         {
             printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+        }
+        if(close(sck) == -1)
+        {
+            //Else, error occurred, print it to syslog and finish program
+            printf("Could not close socket: %s\n", strerror(errno));
         }
         return 1;
     }
@@ -317,6 +620,21 @@ int main(int c, char **argv)
     if(close(hm11_dev))
     {
         printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
+    }
+
+    //Wait for server thread to finalize
+    ret = pthread_join(server_thread_id, NULL);
+    if(ret)
+    {
+        printf("Could not join server thread: %s", strerror(ret));
+        return 1;  
+    }
+
+    //Close socket
+    if(close(sck) == -1)
+    {
+        //Else, error occurred, print it to syslog and finish program
+        printf("Could not close socket: %s\n", strerror(errno));
     }
     return 0;
 }
