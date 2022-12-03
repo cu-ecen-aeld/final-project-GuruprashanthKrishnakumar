@@ -511,6 +511,14 @@ void hm11_cleanup_module(void)
     dev_t devno = MKDEV(hm11_major, hm11_minor);
     cdev_del(&cdev);
     unregister_chrdev_region(devno, 1);
+    if(services.str_len)
+    {
+        kfree(services.str);
+    }
+    if(characteristics.str_len)
+    {
+        kfree(characteristics.str);
+    }
 }
 
 static ssize_t hm11_transmit(char *buf, size_t len)
