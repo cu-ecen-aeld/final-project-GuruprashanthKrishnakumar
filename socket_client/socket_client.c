@@ -11,7 +11,7 @@
 
 
 #define IP_ADDR                 ("192.168.1.3")
-#define TCP_PORT                (80)
+#define TCP_PORT                (9000)
 #define LOG_FILE                ("/dev/uart_serial-481a8000")
 
 bool signal_caught = false;
