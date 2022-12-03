@@ -10,6 +10,7 @@
  */
 
 //Includes
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -21,6 +22,7 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <time.h>
 #include "../hm11_lkm/hm11_ioctl.h"
 #include "queue.h"
 
@@ -34,6 +36,7 @@ struct client_thread_t
     int socket_client;
     int socket_server;
     struct sockaddr_storage client_addr;
+    pthread_mutex_t new_value_available_mutex;
     char new_value_available;
     char finished;
 
@@ -44,8 +47,9 @@ struct client_thread_t
 static char terminated = 0;
 static char heart_rate;
 //Linked list of threads
-SLIST_HEAD(head_s, client_thread_t) head;
-
+static SLIST_HEAD(head_s, client_thread_t) head;
+//Timer that attempts client thread joins
+static timer_t timer;
 /**
 * sighandler
 * @brief Handles the SIGINT and SIGTERM signals.
@@ -57,9 +61,35 @@ static void signalhandler(int sig)
 {
     if(sig == SIGINT)
     {
-       printf("Signal received, gracefully terminating server.\n");
-    
-       terminated = 1;
+        printf("Signal received, gracefully terminating server.\n");
+        if(timer_delete(timer))
+        {
+            printf("Could not delete timer.\n");
+        }
+        terminated = 1;
+    }
+}
+
+static void clean_threads()
+{
+    //Perform cleaning of the current list on every new connection
+    struct client_thread_t *element = NULL;
+    struct client_thread_t *tmp = NULL;
+    SLIST_FOREACH_SAFE(element, &head, node, tmp)
+    {
+        if(element->finished)
+        {
+            SLIST_REMOVE(&head, element, client_thread_t, node);
+            //Join the thread
+            int ret = pthread_join(element->thread_id, NULL);
+            if(ret != 0)
+            {
+                printf("Could not join thread: %s", strerror(ret));
+            }
+            //Free the memory used by the structure
+            pthread_mutex_destroy(&element->new_value_available_mutex);
+            free(element);
+        }
     }
 }
 
@@ -108,12 +138,24 @@ static void *handle_client(void *client_info)
     {   
         //Check if the client has finished connection
         if(!recv(client_info_parsed->socket_client, &unused, sizeof(char), MSG_DONTWAIT))
-            break;
+            goto terminate_client;
 
         //Wait for a new value to come from the HM11 driver
         while(!client_info_parsed->new_value_available);
         //Clear flag
+        int ret = pthread_mutex_lock(&client_info_parsed->new_value_available_mutex);
+        if(ret != 0)
+        {
+            printf("Could not lock mutex: %s", strerror(ret));
+            goto terminate_client;
+        }
         client_info_parsed->new_value_available = 0;
+        ret = pthread_mutex_unlock(&client_info_parsed->new_value_available_mutex);
+        if(ret != 0)
+        {
+            printf("Could not lock mutex: %s", strerror(ret));
+            goto terminate_client;
+        }
 
         //Get the value
         char heart_rate_value = heart_rate;
@@ -124,14 +166,12 @@ static void *handle_client(void *client_info)
         {
             sent_bytes = send(client_info_parsed->socket_client, &heart_rate_value, sizeof(char), 0);
             if(sent_bytes == -1)
-            {
-                client_info_parsed->finished = 1;
-                return NULL; //Finish connection with this socket
-            }
+                goto terminate_client;
         }
         
     } while(!terminated);
 
+terminate_client:
     client_info_parsed->finished = 1;
     return NULL;
 }
@@ -180,6 +220,10 @@ static void *main_server_thread(void *socket)
         new->socket_client = connection_fd;
         new->finished = 0;
         new->new_value_available = 0;
+        if(pthread_mutex_init(&new->new_value_available_mutex, NULL))
+        {
+            continue;
+        }
         new->socket_server = sck;
         memcpy((void *) &new->client_addr, (const void *) &client_addr, sizeof(struct sockaddr_storage));
         
@@ -195,26 +239,6 @@ static void *main_server_thread(void *socket)
 
         //Add the thread information to the linked list
         SLIST_INSERT_HEAD(&head, new, node);
-
-        //Perform cleaning of the current list on every new connection
-        struct client_thread_t *element = NULL;
-        struct client_thread_t *tmp = NULL;
-        SLIST_FOREACH_SAFE(element, &head, node, tmp)
-        {
-            if(element->finished)
-            {
-                SLIST_REMOVE(&head, element, client_thread_t, node);
-                //Join the thread
-                int ret = pthread_join(element->thread_id, NULL);
-                if(ret != 0)
-                {
-                    printf("Could not join thread: %s", strerror(ret));
-                    continue;  
-                }
-                //Free the memory used by the structure
-                free(element);
-            }
-        }
     }
 
     //Make sure all threads finish and are joined
@@ -271,11 +295,7 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("An error occured while issuing an ECHO to the HM11 module: %s\n", strerror(ret));
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
     switch(char_ret)
     {
@@ -296,11 +316,7 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("Setting the device to default did not perform successfully: %s\n", strerror(ret));
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
     else
     {
@@ -314,11 +330,7 @@ int main(int c, char **argv)
     if(!cmd_str.str)
     {
         printf("Mallocing of a command string has not been possible, aborting.\n");
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
     cmd_str.str[0] = '1';
     ret = ioctl(hm11_dev, HM11_ROLE, &cmd_str);
@@ -326,11 +338,7 @@ int main(int c, char **argv)
     {
         printf("An error occurred setting the device as Controller: %s\n", strerror(ret));
         free(cmd_str.str);
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
     else
     {
@@ -344,11 +352,7 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("Could not set device to passive mode, aborting.\n");
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
     else
     {
@@ -362,11 +366,7 @@ int main(int c, char **argv)
     if(!cmd_str.str)
     {
         printf("Mallocing of a command string has not been possible, aborting.\n");
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
     strncpy(cmd_str.str, HEART_RATE_MAC, MAC_SIZE_STR);
     cmd_str.str_len = MAC_SIZE_STR;
@@ -375,11 +375,7 @@ int main(int c, char **argv)
     {
         printf("Could not connect to the device, aborting: %s\n", strerror(ret));
         free(cmd_str.str);
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
     else
     {
@@ -393,11 +389,7 @@ int main(int c, char **argv)
     if(!cmd_str.str)
     {
         printf("Mallocing of a command string has not been possible, aborting.\n");
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
     strncpy(cmd_str.str, HEART_RATE_CHARACTERISTIC, CHARACTERISTIC_SIZE_STR);
     cmd_str.str_len = CHARACTERISTIC_SIZE_STR;
@@ -405,11 +397,8 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("Could not request characteristic notify: %s\n", strerror(ret));
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        free(cmd_str.str);
+        goto close_hm11;
     }
     else
     {
@@ -425,21 +414,13 @@ int main(int c, char **argv)
     if(sigemptyset(&empty) == -1)
     {
         printf("Could not set up empty signal set: %s.", strerror(errno));
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
     action.sa_mask = empty;
     if(sigaction(SIGINT, &action, NULL) == -1)
     {
         printf("Could not set up handle for SIGINT: %s.", strerror(errno));
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
 
     //Configure the socket server that clients will connect to get heart rate measurements
@@ -452,11 +433,7 @@ int main(int c, char **argv)
     if(getaddrinfo(NULL, "9000", &hints, &res) != 0)
     {
         printf("An error occurred setting up the socket.\n");
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        goto close_hm11;
     }
 
     //Create the socket file descriptor
@@ -464,21 +441,15 @@ int main(int c, char **argv)
     if(sck == -1)
     {
         printf("An error occurred setting up the socket: %s\n", strerror(errno));
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;
+        freeaddrinfo(res);
+        goto close_hm11;
     }
     //Bind the socket to the addr+port specified in "getaddrinfo"
     if(bind(sck, res->ai_addr, res->ai_addrlen) == -1)
     {
         printf("An error occurred binding the socket: %s\n", strerror(errno));
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        return 1;      
+        freeaddrinfo(res);
+        goto close_socket_hm11;     
     }
 
     //Free the addr linked list now that we have already used it
@@ -488,21 +459,44 @@ int main(int c, char **argv)
     if(listen(sck, MAX_CLIENTS) == -1)
     {
         printf("An error occurred listening the socket: %s\n", strerror(errno));
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        if(close(sck) == -1)
-        {
-            //Else, error occurred, print it to syslog and finish program
-            printf("Could not close socket: %s\n", strerror(errno));
-        }
-        return 1;       
+        goto close_socket_hm11;       
     }
     printf("The server is listening to port 9000\n");
 
     //Initialize Liked List of client threads
     SLIST_INIT(&head);
+
+    //Create a timer routine that joins threads as they finish
+    struct itimerspec interval_time;
+	struct itimerspec last_interval_time;
+
+	//Set up to signal SIGALRM if timer expires
+	ret = timer_create(CLOCK_MONOTONIC, NULL, &timer);
+	if(ret)
+	{
+		printf("Failed on creating time.\n");
+		goto close_socket_hm11;    
+	}
+	
+	sighandler_t ret_signal = signal(SIGALRM, (void(*)()) clean_threads);
+	if(ret_signal == SIG_ERR)
+	{
+		printf("Signal setup failed on creation.");
+		goto close_socket_hm11;    
+	}
+
+	//Arm the interval timer
+	interval_time.it_interval.tv_sec = 5;
+	interval_time.it_interval.tv_nsec = 0;
+	interval_time.it_value.tv_sec = 5;
+	interval_time.it_value.tv_nsec = 0;
+
+	ret = timer_settime(timer, 0, &interval_time, &last_interval_time);
+	if(ret)
+	{
+		printf("Scheduler setup failed on setting time value.");
+		goto close_socket_hm11;
+	}
 
     //Create a thread for the socket created, to wait for connections without interrumping the interaction with the driver
     pthread_t server_thread_id;
@@ -510,15 +504,7 @@ int main(int c, char **argv)
     if(ret)
     {            
         printf("Could not create server thread: %s\n", strerror(ret));
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        if(close(sck) == -1)
-        {
-            //Else, error occurred, print it to syslog and finish program
-            printf("Could not close socket: %s\n", strerror(errno));
-        }
+        goto close_socket_hm11;  
         return 1;  
     }
 
@@ -540,7 +526,18 @@ int main(int c, char **argv)
             struct client_thread_t *tmp = NULL;
             SLIST_FOREACH_SAFE(element, &head, node, tmp)
             {
+                ret = pthread_mutex_lock(&element->new_value_available_mutex);
+                if(ret != 0)
+                {
+                    goto close_all;  
+                }
                 element->new_value_available = 1;
+                ret = pthread_mutex_unlock(&element->new_value_available_mutex);
+                if(ret != 0)
+                {
+                    printf("Could not lock mutex: %s", strerror(ret));
+                    goto close_all;  
+                }
             }
         }
         
@@ -551,16 +548,7 @@ int main(int c, char **argv)
     if(!cmd_str.str)
     {
         printf("Mallocing of a command string has not been possible, aborting.\n");
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        if(close(sck) == -1)
-        {
-            //Else, error occurred, print it to syslog and finish program
-            printf("Could not close socket: %s\n", strerror(errno));
-        }
-        return 1;
+        goto close_all;
     }
     strncpy(cmd_str.str, HEART_RATE_CHARACTERISTIC, CHARACTERISTIC_SIZE_STR);
     cmd_str.str_len = CHARACTERISTIC_SIZE_STR;
@@ -569,16 +557,7 @@ int main(int c, char **argv)
     {
         printf("Could not request characteristic unnotify: %s\n", strerror(ret));
         free(cmd_str.str);
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        if(close(sck) == -1)
-        {
-            //Else, error occurred, print it to syslog and finish program
-            printf("Could not close socket: %s\n", strerror(errno));
-        }
-        return 1;
+        goto close_all;
     }
     else
     {
@@ -592,16 +571,7 @@ int main(int c, char **argv)
     if(ret)
     {
         printf("An error occured while issuing an ECHO to the HM11 module: %s\n", strerror(ret));
-        if(close(hm11_dev))
-        {
-            printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-        }
-        if(close(sck) == -1)
-        {
-            //Else, error occurred, print it to syslog and finish program
-            printf("Could not close socket: %s\n", strerror(errno));
-        }
-        return 1;
+        goto close_all;  
     }
     switch(char_ret)
     {
@@ -616,12 +586,9 @@ int main(int c, char **argv)
         break;
     }
 
-    //Close file descriptor
-    if(close(hm11_dev))
-    {
-        printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
-    }
 
+close_all:
+    terminated = 1;
     //Wait for server thread to finalize
     ret = pthread_join(server_thread_id, NULL);
     if(ret)
@@ -630,11 +597,17 @@ int main(int c, char **argv)
         return 1;  
     }
 
-    //Close socket
+close_socket_hm11:
     if(close(sck) == -1)
     {
         //Else, error occurred, print it to syslog and finish program
         printf("Could not close socket: %s\n", strerror(errno));
+    }
+
+close_hm11:
+    if(close(hm11_dev))
+    {
+        printf("Could not close HM11 File Descriptor: %s.\n", strerror(errno));
     }
     return 0;
 }
