@@ -30,13 +30,14 @@ static ssize_t hm11_transmit(char *buf, size_t len);
 static ssize_t variable_wait_limited(char *buf, size_t len, size_t timeout);
 static ssize_t reallocate_memory_if(int condition,struct hm11_ioctl_str *buf,size_t packet_length);
 static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_ioctl_str *buf);
+static ssize_t parse_device_discovery_response(void);
 
 static ssize_t hm11_echo(void);
 static void hm11_mac_read(char *str);
 static void hm11_mac_write(char *str);
 static long hm11_connect_last(void);
 static long hm11_mac_connect(char *str);
-static void hm11_discover(char *str);
+static ssize_t hm11_device_probe(void);
 static ssize_t hm11_services_probe(void);
 static ssize_t hm11_characteristics_probe(void);
 static long hm11_characteristic_notify(char *str);
@@ -48,8 +49,8 @@ static ssize_t hm11_set_role(char *str);
 static void hm11_sleep(void);
 static ssize_t hm11_read_notified(void);
 
-
-//static struct hm11_ioctl_str devices = {NULL,0};
+static size_t devices_str_num_chars_to_copy = 0;
+static struct hm11_ioctl_str devices = {NULL,0};
 static size_t service_str_num_chars_to_copy = 0;
 static struct hm11_ioctl_str services = {NULL,0};
 static size_t characteristics_str_num_chars_to_copy = 0;
@@ -200,25 +201,46 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             kfree(str);
 
         break;
+    case HM11_DISCOVER_PROBE:
+        res = hm11_device_probe();
+        if(res < 0)
+        {
+            ret_val = res;
+            //RETURN ERROR
+        }
+        else
+        {
+            struct hm11_ioctl_str copy_struct = {NULL,res};
+            if (copy_to_user((void __user *)arg, &copy_struct, sizeof(struct hm11_ioctl_str)))
+            {
+                ret_val = -EFAULT;
+            }
+        }
+        break;
+
     case HM11_DISCOVER:
-        printk("hm11: Performing device discovery...\n");
-
-        str = kmalloc(sizeof(char)*MAC_SIZE_STR*100, GFP_KERNEL);
-        if(!str)
-            return -ENOMEM;
-        
+        if(!devices_str_num_chars_to_copy)
+        {
+            return -EINVAL;
+        }
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
+        {
             return -EFAULT;
-        if (ioctl_str.str_len < MAC_SIZE_STR*100)
+        }
+        if (ioctl_str.str_len != (devices_str_num_chars_to_copy + 1))
+        {
             return -EOVERFLOW;
-
-        hm11_discover(str);
-
-        if (copy_to_user((void __user *)ioctl_str.str, str, MAC_SIZE_STR))
+        }
+        if (copy_to_user((void __user *)ioctl_str.str, devices.str, devices_str_num_chars_to_copy))
+        {
             return -EFAULT;
-
-        //Free the used space
-        kfree(str);
+        }
+        else
+        {
+            kfree(devices.str);
+            devices.str_len = 0;
+            devices_str_num_chars_to_copy = 0;
+        }
 
         break;
     case HM11_SERVICE_DISCOVER_PROBE:
@@ -519,6 +541,10 @@ void hm11_cleanup_module(void)
     {
         kfree(characteristics.str);
     }
+    if(devices.str_len)
+    {
+        kfree(devices.str);
+    }
 }
 
 static ssize_t hm11_transmit(char *buf, size_t len)
@@ -619,6 +645,126 @@ static ssize_t reallocate_memory_if(int condition,struct hm11_ioctl_str *buf,siz
         }
     }
     return condition;
+}
+
+static ssize_t parse_device_discovery_response(void)
+{
+    size_t num_bytes_written = 0;
+    ssize_t ret = 0;
+    char temp_buf[13],c;
+    //LOOK for OK+DISCS
+    ret = fixed_wait(temp_buf,8);
+    if(ret<0)
+    {
+        return ret;
+    }
+    if(strncmp(temp_buf,"OK+DISCS",8)!=0)
+    {
+        return -ENODEV;
+    }
+    ret = fixed_wait(temp_buf,8);
+    if(ret<0)
+    {
+        return ret;
+    }
+    while((strncmp(temp_buf,"OK+DISCE",8)!=0))
+    {
+        if(!devices.str_len)
+        {
+            devices.str = kmalloc(35*sizeof(char),GFP_KERNEL);
+            if(!devices.str)
+            {
+                return -ENOMEM;
+            }
+            devices.str_len +=35;
+        }
+        //16 bytes because ",[ADDRTYPE]:[12 byte mac addr]; ==> 1+1+1+12+1. The first ',' is optional" 
+        ret = reallocate_memory_if(((devices.str_len - num_bytes_written)<16),&devices,35);
+        if(ret < 0)
+        {
+            goto ret_error_check;
+        }
+        //',' is not needed if it's the first device
+        if(num_bytes_written)
+        {
+            devices.str[num_bytes_written++]=',';
+        }
+        //Copy ADDRTYPE and :
+        strncpy(&devices.str[num_bytes_written],&temp_buf[6],2);
+        num_bytes_written += 2;
+        //Read MAC address string
+        ret = fixed_wait(temp_buf,12);
+        if(ret<0)
+        {
+            goto ret_error_check;
+        }
+        strncpy(&devices.str[num_bytes_written],temp_buf,12);
+        num_bytes_written += 12;
+        devices.str[num_bytes_written++]=';';
+        c = 0;
+        //Ignoring RSSI
+        while(c!='\n')
+        {
+            ret = fixed_wait(&c,1);
+            if(ret<0)
+            {
+                goto ret_error_check;
+            }
+        }
+        //Ideally should be OK+NAME:
+        ret = fixed_wait(temp_buf,8);
+        if(ret<0)
+        {
+            goto ret_error_check;
+        }
+        //but you never know
+        if(strncmp(temp_buf,"OK+NAME:",8)!=0)
+        {
+            continue;
+        }
+        //read the entire name, until \r\n is encountered
+        while(true)
+        {
+            ret = fixed_wait(&c,1);
+            if(ret<0)
+            {
+                goto ret_error_check;
+            }
+            if(c=='\r')
+            {
+                //read \n as well
+                ret = fixed_wait(&c,1);
+                if(ret<0)
+                {
+                    goto ret_error_check;
+                    //goto outside outer while
+                }
+                break;
+            }
+            ret = reallocate_memory_if(((devices.str_len - num_bytes_written)<1),&devices,35);
+            if(ret < 0)
+            {
+                goto ret_error_check;
+            }
+            devices.str[num_bytes_written++]=c;
+        }
+        ret = fixed_wait(temp_buf,8);
+        if(ret<0)
+        {
+            goto ret_error_check;
+        }
+    }
+    //discard the trailing \r\n
+    ret = fixed_wait(temp_buf,2);
+    ret_error_check:
+    //check if any error occurred
+    if(ret<0)
+    {
+        kfree(devices.str);
+        devices.str_len = 0;
+        return ret;
+    }
+    return num_bytes_written;
 }
 
 /*
@@ -888,10 +1034,25 @@ static long hm11_mac_connect(char *str)
     return ret;
 }
 
-static void hm11_discover(char *str)
+static ssize_t hm11_device_probe(void)
 {
     /*write_uart("AT+DISC?");
     read_uart();*/
+    ssize_t ret = 0;
+    ret = hm11_transmit("AT+DISC?",8);
+    if(ret<0)
+    {
+        return ret;
+    }
+    ret = parse_device_discovery_response();
+    if(ret<0)
+    {
+        devices_str_num_chars_to_copy = 0;
+        return ret;
+    }
+    devices_str_num_chars_to_copy = ret;
+    //convention to require one more byte than actually needed.
+    return (ret + 1);
 }
 
 static ssize_t hm11_services_probe(void)
