@@ -71,6 +71,7 @@ static void signalhandler(int sig)
 
 static void empty_function()
 {
+    printf("Timer interrupt.\n");
     return;
 }
 
