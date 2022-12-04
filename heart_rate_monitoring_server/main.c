@@ -69,6 +69,11 @@ static void signalhandler(int sig)
     }
 }
 
+static void empty_function()
+{
+    return;
+}
+
 static int setup_signal(int signo)
 {
     struct sigaction action;
@@ -119,11 +124,6 @@ static void clean_threads()
             free(element);
         }
     }
-}
-
-static void empty_function()
-{
-    return;
 }
 
 /**
@@ -492,8 +492,6 @@ int main(int c, char **argv)
 		printf("Failed on creating time.\n");
 		goto close_socket_hm11;    
 	}
-	
-    struct sigaction timer_signal;
 
 	//Arm the interval timer
 	interval_time.it_interval.tv_sec = 5;
@@ -619,7 +617,6 @@ close_all:
         printf("Could not join server thread: %s", strerror(ret));
         return 1;  
     }
-close_timer_socket_hm11:
     if(timer_delete(timer))
     {
         printf("Could not delete timer.\n");
