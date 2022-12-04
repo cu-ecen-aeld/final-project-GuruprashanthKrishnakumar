@@ -209,13 +209,7 @@ static void *main_server_thread(void *socket)
         return NULL;
     }
     int sck = *(int *)socket;
-    fd_set rfds;
-    struct timeval tv;
-    int retval;
 
-    /* Watch stdin (fd 0) to see when it has input. */
-    FD_ZERO(&rfds);
-    FD_SET(sck, &rfds);
     /* Wait up to five seconds. */
     
     //Start a loop of receiving contents  
@@ -225,9 +219,13 @@ static void *main_server_thread(void *socket)
         socklen_t addr_size = sizeof client_addr;
         int connection_fd;
 
-        //Accept a connection
+        fd_set rfds;
+        struct timeval tv;
+        int retval;
         tv.tv_sec = 5;
         tv.tv_usec = 0;
+        FD_ZERO(&rfds);
+        FD_SET(sck, &rfds);
         retval = select(sck+1, &rfds, NULL, NULL, &tv);
         /* Don’t rely on the value of tv now! */
 
