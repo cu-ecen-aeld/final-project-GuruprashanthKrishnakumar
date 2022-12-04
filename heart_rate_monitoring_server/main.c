@@ -259,7 +259,7 @@ static void *main_server_thread(void *socket)
         if(ret != 0)
         {
             printf("Could not unlock mutex to access list.\n");
-            continue;  
+            break;  
         }
     }
 
