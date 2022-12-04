@@ -94,7 +94,6 @@ static int setup_signal(int signo)
 static void clean_threads()
 {
     //Perform cleaning of the current list on every new connection
-    printf("Cleaning threads...\n");
     struct client_thread_t *element = NULL;
     struct client_thread_t *tmp = NULL;
     int ret = pthread_mutex_lock(&list_mutex);
