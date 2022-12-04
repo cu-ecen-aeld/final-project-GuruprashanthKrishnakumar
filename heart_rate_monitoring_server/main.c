@@ -224,7 +224,7 @@ static void *main_server_thread(void *socket)
         }
 
         //Add new service information to a new element of the thread linked list
-        struct client_thread_t *new = malloc(sizeof(struct client_thread_t));
+        volatile struct client_thread_t *new = malloc(sizeof(struct client_thread_t));
         new->socket_client = connection_fd;
         new->finished = 0;
         new->new_value_available = 0;
@@ -556,7 +556,6 @@ int main(int c, char **argv)
                 SLIST_FOREACH_SAFE(element, &head, node, tmp)
                 {
                     printf("Setting new available value to socket...\n");
-                    print_accepted_conn(element->client_addr);
                     ret = pthread_mutex_lock(&element->new_value_available_mutex);
                     if(ret != 0)
                     {
@@ -569,6 +568,7 @@ int main(int c, char **argv)
                         printf("Could not lock mutex: %s", strerror(ret));
                         goto close_all;  
                     }
+                    printf("Value to the socket has been set.\n");
                 }
             }
             else
