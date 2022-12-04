@@ -65,10 +65,6 @@ static void signalhandler(int sig)
     if(sig == SIGINT)
     {
         printf("Signal received, gracefully terminating server.\n");
-        if(timer_delete(timer))
-        {
-            printf("Could not delete timer.\n");
-        }
         terminated = 1;
     }
 }
@@ -76,6 +72,7 @@ static void signalhandler(int sig)
 static void clean_threads()
 {
     //Perform cleaning of the current list on every new connection
+    printf("Cleaning threads...\n");
     struct client_thread_t *element = NULL;
     struct client_thread_t *tmp = NULL;
 
@@ -95,6 +92,11 @@ static void clean_threads()
             free(element);
         }
     }
+}
+
+static void empty_function()
+{
+    return;
 }
 
 /**
@@ -199,81 +201,59 @@ static void *main_server_thread(void *socket)
 
         //Accept a connection
         int connection_fd = accept(sck, (struct sockaddr *) &client_addr, &addr_size);
-        if(connection_fd == -1)
+        if(connection_fd < 0)
         {
-            if(errno == EINTR)
-            {
-                //The signal has set "terminated" and the next while iteration will not happen
-                continue;
-            }
-            else
-            {
-                printf("An error occurred accepting a new connection to the socket: %s", strerror(errno));
-                //Implementation defined: wait for next request, not terminate server
-                continue;
-            }
-        }
-
-        //Add new service information to a new element of the thread linked list
-        struct client_thread_t *new = malloc(sizeof(struct client_thread_t));
-        new->socket_client = connection_fd;
-        new->finished = 0;
-        if(sem_init(&new->new_value, 0, 0))
-        {
-            printf("Error initializing the client semaphore.\n");
-            continue;
-        }
-        new->socket_server = sck;
-        memcpy((void *) &new->client_addr, (const void *) &client_addr, sizeof(struct sockaddr_storage));
-        
-        //Create the thread that will serve the client
-        int ret = pthread_create(&new->thread_id, NULL, handle_client, (void *) new);
-        if(ret!= 0)
-        {            
-            printf("Could not create new thread: %s", strerror(ret));
-
             //Implementation defined: wait for next request, not terminate server
-            continue; 
+            if(connection_fd != EINTR)
+                printf("An error occurred accepting a new connection to the socket: %s", strerror(errno));
+            clean_threads();
         }
+        else
+        {
+            //Add new service information to a new element of the thread linked list
+            struct client_thread_t *new = malloc(sizeof(struct client_thread_t));
+            new->socket_client = connection_fd;
+            new->finished = 0;
+            if(sem_init(&new->new_value, 0, 0))
+            {
+                printf("Error initializing the client semaphore.\n");
+                continue;
+            }
+            new->socket_server = sck;
+            memcpy((void *) &new->client_addr, (const void *) &client_addr, sizeof(struct sockaddr_storage));
+            
+            //Create the thread that will serve the client
+            int ret = pthread_create(&new->thread_id, NULL, handle_client, (void *) new);
+            if(ret!= 0)
+            {            
+                printf("Could not create new thread: %s", strerror(ret));
 
-        //Add the thread information to the linked list
-        printf("Inserting the element to the list.\n");
-        ret = pthread_mutex_lock(&list_mutex);
-        if(ret != 0)
-        {
-            printf("Could not lock mutex to access list.\n");
-            break;  
-        }
-        SLIST_INSERT_HEAD(&head, new, node);
-        ret = pthread_mutex_unlock(&list_mutex);
-        if(ret != 0)
-        {
-            printf("Could not unlock mutex to access list.\n");
-            break;  
+                //Implementation defined: wait for next request, not terminate server
+                continue; 
+            }
+
+            //Add the thread information to the linked list
+            printf("Inserting the element to the list.\n");
+            ret = pthread_mutex_lock(&list_mutex);
+            if(ret != 0)
+            {
+                printf("Could not lock mutex to access list.\n");
+                break;  
+            }
+            SLIST_INSERT_HEAD(&head, new, node);
+            ret = pthread_mutex_unlock(&list_mutex);
+            if(ret != 0)
+            {
+                printf("Could not unlock mutex to access list.\n");
+                break;  
+            }
         }
     }
 
     //Make sure all threads finish and are joined
     while(!SLIST_EMPTY(&head))
     {
-        struct client_thread_t *element = NULL;
-        struct client_thread_t *tmp = NULL;
-        SLIST_FOREACH_SAFE(element, &head, node, tmp)
-        {
-            if(element->finished)
-            {
-                SLIST_REMOVE(&head, element, client_thread_t, node);
-                //Join the thread
-                int ret = pthread_join(element->thread_id, NULL);
-                if(ret != 0)
-                {
-                    printf("Could not join thread: %s", strerror(ret));
-                    continue;  
-                }
-                //Free the memory used by the structure
-                free(element);
-            }
-        }
+        clean_threads();
     }
 
     return NULL;
@@ -490,7 +470,7 @@ int main(int c, char **argv)
 		goto close_socket_hm11;    
 	}
 	
-	sighandler_t ret_signal = signal(SIGALRM, (void(*)()) clean_threads);
+	sighandler_t ret_signal = signal(SIGALRM, (void(*)()) empty_function);
 	if(ret_signal == SIG_ERR)
 	{
 		printf("Signal setup failed on creation.");
@@ -619,6 +599,10 @@ close_all:
     {
         printf("Could not join server thread: %s", strerror(ret));
         return 1;  
+    }
+    if(timer_delete(timer))
+    {
+        printf("Could not delete timer.\n");
     }
 
 close_socket_hm11:
