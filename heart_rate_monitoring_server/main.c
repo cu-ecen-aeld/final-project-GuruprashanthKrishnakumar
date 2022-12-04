@@ -47,7 +47,8 @@ struct client_thread_t
 static char terminated = 0;
 static char heart_rate;
 //Linked list of threads
-static SLIST_HEAD(head_s, client_thread_t) head;
+pthread_mutex_t list_mutex = PTHREAD_MUTEX_INITIALIZER; 
+SLIST_HEAD(head_s, client_thread_t) head;
 //Timer that attempts client thread joins
 static timer_t timer;
 /**
@@ -229,6 +230,7 @@ static void *main_server_thread(void *socket)
         new->new_value_available = 0;
         if(pthread_mutex_init(&new->new_value_available_mutex, NULL))
         {
+            printf("Mutex could not be initialized...\n");
             continue;
         }
         new->socket_server = sck;
@@ -246,7 +248,19 @@ static void *main_server_thread(void *socket)
 
         //Add the thread information to the linked list
         printf("Inserting the element to the list.\n");
+        ret = pthread_mutex_lock(&list_mutex);
+        if(ret != 0)
+        {
+            printf("Could not lock mutex to access list.\n");
+            continue;  
+        }
         SLIST_INSERT_HEAD(&head, new, node);
+        ret = pthread_mutex_unlock(&list_mutex);
+        if(ret != 0)
+        {
+            printf("Could not unlock mutex to access list.\n");
+            continue;  
+        }
     }
 
     //Make sure all threads finish and are joined
@@ -528,26 +542,44 @@ int main(int c, char **argv)
         }
         else
         {
-            printf("The current heart rate is: %d\n", heart_rate);
             //Update the flag on every existing thread
             struct client_thread_t *element = NULL;
             struct client_thread_t *tmp = NULL;
-            SLIST_FOREACH_SAFE(element, &head, node, tmp)
+            ret = pthread_mutex_lock(&list_mutex);
+            if(ret != 0)
             {
-                printf("Setting new available value to socket...\n");
-                print_accepted_conn(element->client_addr);
-                ret = pthread_mutex_lock(&element->new_value_available_mutex);
-                if(ret != 0)
+                printf("Could not lock mutex to access list.\n");
+                goto close_all;  
+            }
+            if(!SLIST_EMPTY(&head))
+            {
+                SLIST_FOREACH_SAFE(element, &head, node, tmp)
                 {
-                    goto close_all;  
+                    printf("Setting new available value to socket...\n");
+                    print_accepted_conn(element->client_addr);
+                    ret = pthread_mutex_lock(&element->new_value_available_mutex);
+                    if(ret != 0)
+                    {
+                        goto close_all;  
+                    }
+                    element->new_value_available = 1;
+                    ret = pthread_mutex_unlock(&element->new_value_available_mutex);
+                    if(ret != 0)
+                    {
+                        printf("Could not lock mutex: %s", strerror(ret));
+                        goto close_all;  
+                    }
                 }
-                element->new_value_available = 1;
-                ret = pthread_mutex_unlock(&element->new_value_available_mutex);
-                if(ret != 0)
-                {
-                    printf("Could not lock mutex: %s", strerror(ret));
-                    goto close_all;  
-                }
+            }
+            else
+            {
+                printf("The current heart rate is: %d\n", heart_rate);
+            }
+            ret = pthread_mutex_unlock(&list_mutex);
+            if(ret != 0)
+            {
+                printf("Could not unlock mutex to access list.\n");
+                goto close_all;  
             }
         }
         
