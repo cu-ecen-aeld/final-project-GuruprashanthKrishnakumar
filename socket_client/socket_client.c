@@ -22,6 +22,7 @@ static int setup_signal(int signo);
 
 static void signal_handler()
 {
+    printf("A signal has been caught.\n");
     signal_caught = true;
 }
 
@@ -150,13 +151,15 @@ int main(void)
             printf("Server closed the connection.\n");
         }
         else
-        {
+        {   
+            printf("Writing value %d to the log file.\n", server_reply[0]);
             if(write_to_log_file(server_reply,ret)==-1)
             {
                 goto out;
             }
         }
     }
+    printf("Signal got caught and terminating.\n");
 	out: close(socket_desc);
 	     return 0;
 }
