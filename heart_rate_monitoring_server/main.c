@@ -252,7 +252,7 @@ static void *main_server_thread(void *socket)
         if(ret != 0)
         {
             printf("Could not lock mutex to access list.\n");
-            continue;  
+            break;  
         }
         SLIST_INSERT_HEAD(&head, new, node);
         ret = pthread_mutex_unlock(&list_mutex);
