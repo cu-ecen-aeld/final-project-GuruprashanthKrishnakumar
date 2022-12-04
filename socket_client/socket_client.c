@@ -156,6 +156,7 @@ int main(void)
         {
             //?? server closed the connection?
             printf("Server closed the connection.\n");
+            break;
         }
         else
         {   
