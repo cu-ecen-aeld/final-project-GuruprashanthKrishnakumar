@@ -17,7 +17,7 @@
 bool signal_caught = false;
 static void signal_handler();
 static int write_to_log_file(char *buf, size_t len);
-static int write_byte(int fd, char *buf);
+//static int write_byte(int fd, char *buf);
 static int setup_signal(int signo);
 
 static void signal_handler()
@@ -26,7 +26,7 @@ static void signal_handler()
     signal_caught = true;
 }
 
-static int write_byte(int fd, char *buf)
+/*static int write_byte(int fd, char *buf)
 {
     int ret = 0;
     ret = write(fd,buf,1);
@@ -36,32 +36,33 @@ static int write_byte(int fd, char *buf)
         return -1;
     }
     return 0;
-}
+}*/
 
 static int write_to_log_file(char *buf, size_t len)
 {
-    int log_file_desc,num_bytes_written = 0,ret = 0;
-    log_file_desc = open(LOG_FILE,O_RDWR);
+    //int log_file_desc;
+    int num_bytes_written = 0,ret = 0;
+    /*log_file_desc = open(LOG_FILE,O_RDWR);
     if(log_file_desc == -1)
     {
         printf("Open: %s",strerror(errno));
         return -1;
-    }
+    }*/
     while(num_bytes_written < len)
     {
         printf("Value: %d\n", buf[num_bytes_written]);
-        if(write_byte(log_file_desc,&buf[num_bytes_written])==-1)
+        /*if(write_byte(log_file_desc,&buf[num_bytes_written])==-1)
         {
             goto out;
         }
         if(write_byte(log_file_desc,"\n")==-1)
         {
             goto out;
-        }
+        }/*/
         num_bytes_written +=1;
     }    
     ret = 0;
-    out: close(log_file_desc);
+    //out: close(log_file_desc);
         return ret;
 }
 
