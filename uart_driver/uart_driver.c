@@ -500,7 +500,7 @@ static int uart_probe(struct platform_device *pdev)
     }
     //Initialize and register a misc device
     dev->mDev.minor = MISC_DYNAMIC_MINOR;
-    dev->mDev.name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "uart_serial-%llx", res->start);
+    dev->mDev.name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "uart_serial-%x", res->start);
     dev->mDev.fops = &uart_fops;
     error = misc_register(&dev->mDev);
     if (error)
