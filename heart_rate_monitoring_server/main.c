@@ -239,7 +239,8 @@ static void *main_server_thread(void *socket)
         {
             //Implementation defined: wait for next request, not terminate server
             if(connection_fd != EINTR)
-                printf("An error occurred accepting a new connection to the socket: %s", strerror(errno));
+                printf("An error occurred accepting a new connection to the socket: %s\n", strerror(errno));
+            printf("Accept did not succeed.\n");
             clean_threads();
         }
         else
@@ -284,11 +285,15 @@ static void *main_server_thread(void *socket)
         }
     }
 
+    printf("Server thread is waiting for child threads to finish...\n");
+
     //Make sure all threads finish and are joined
     while(!SLIST_EMPTY(&head))
     {
         clean_threads();
     }
+
+    printf("Server thread has stopped.\n");
 
     return NULL;
 }
