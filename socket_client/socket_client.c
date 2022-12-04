@@ -123,15 +123,7 @@ int main(void)
 	while (connect(socket_desc , (struct sockaddr *)&server , sizeof(server)) < 0);
 	
 	puts("Connected\n");
-	
-	// //Send some data
-	// message = "Start";
-	// if( send(socket_desc , message , strlen(message) , 0) < 0)
-	// {
-	// 	puts("Send failed");
-	// 	return 1;
-	// }
-	// puts("Data Send\n");
+
 	if(setup_signal(SIGINT)== -1)
     {
         printf("Error setting up SIGINT\n");
@@ -145,7 +137,6 @@ int main(void)
 	//Receive a reply from the server
     while(!signal_caught)
     {
-        printf("Trying to check for a value...\n");
         ret = recv(socket_desc, &server_reply, 1, 0);
         if(ret<0)
         {

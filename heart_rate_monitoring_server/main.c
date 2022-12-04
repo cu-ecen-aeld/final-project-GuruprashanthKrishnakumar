@@ -97,7 +97,12 @@ static void clean_threads()
     printf("Cleaning threads...\n");
     struct client_thread_t *element = NULL;
     struct client_thread_t *tmp = NULL;
-
+    int ret = pthread_mutex_lock(&list_mutex);
+    if(ret != 0)
+    {
+        printf("Could not lock mutex to access list.\n");
+        return;  
+    }
     SLIST_FOREACH_SAFE(element, &head, node, tmp)
     {
         if(element->finished)
@@ -113,6 +118,12 @@ static void clean_threads()
             pthread_mutex_destroy(&element->new_value_available_mutex);
             free(element);
         }
+    }
+    ret = pthread_mutex_unlock(&list_mutex);
+    if(ret != 0)
+    {
+        printf("Could not unlock mutex to access list.\n");
+        return;  
     }
 }
 
@@ -233,12 +244,10 @@ static void *main_server_thread(void *socket)
             perror("select()");
         else if (retval == 0)
         {
-            printf("Accept expired, cleaning threads...\n");
             clean_threads();
         }
         else
         {
-            printf("Accept available now.\n");
             connection_fd = accept(sck, (struct sockaddr *) &client_addr, &addr_size);
             if(connection_fd < 0)
             {
@@ -276,7 +285,6 @@ static void *main_server_thread(void *socket)
                 }
 
                 //Add the thread information to the linked list
-                printf("Inserting the element to the list.\n");
                 ret = pthread_mutex_lock(&list_mutex);
                 if(ret != 0)
                 {
@@ -536,7 +544,6 @@ int main(int c, char **argv)
                         printf("Error while posting for the semaphore, iterating again.\n");
                         continue;
                     }
-                    printf("Semaphore to the socket has been set.\n");
                 }
             }
             else
