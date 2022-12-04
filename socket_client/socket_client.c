@@ -40,7 +40,7 @@ static int write_byte(int fd, char *buf)
 static int write_to_log_file(char *buf, size_t len)
 {
     int log_file_desc,num_bytes_written = 0,ret = 0;
-    log_file_desc = open(LOG_FILE,O_RDWR,666);
+    log_file_desc = open(LOG_FILE,O_RDWR);
     if(log_file_desc == -1)
     {
         printf("Open: %s",strerror(errno));
@@ -48,6 +48,7 @@ static int write_to_log_file(char *buf, size_t len)
     }
     while(num_bytes_written < len)
     {
+        printf("Value: %d\n", buf[num_bytes_written]);
         if(write_byte(log_file_desc,&buf[num_bytes_written])==-1)
         {
             goto out;
@@ -134,16 +135,19 @@ int main(void)
             if(ret == -EINTR)
             {
                 //caught signal. Send stop message to the socket server and exit.
+                printf("Caught a signal and terminating program.\n");
                 goto out;
             }
             else
             {
                 //need to handle any other errors?
+                printf("Unexpected.\n");
             }
         }
         else if(ret == 0)
         {
             //?? server closed the connection?
+            printf("Server closed the connection.\n");
         }
         else
         {

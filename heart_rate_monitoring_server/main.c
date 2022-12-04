@@ -161,7 +161,6 @@ static void *handle_client(void *client_info)
         //Send it to the client
         int sent_bytes = 0;
         printf("Sending HR: %d to...\n", heart_rate);
-        print_accepted_conn(client_info_parsed->client_addr);
         while(sent_bytes != 1)
         {
             sent_bytes = send(client_info_parsed->socket_client, &heart_rate_value, sizeof(char), 0);
