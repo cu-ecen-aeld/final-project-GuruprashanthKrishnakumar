@@ -51,8 +51,7 @@ static char heart_rate;
 //Linked list of threads
 pthread_mutex_t list_mutex = PTHREAD_MUTEX_INITIALIZER; 
 SLIST_HEAD(head_s, client_thread_t) head;
-//Timer that attempts client thread joins
-static timer_t timer;
+
 /**
 * sighandler
 * @brief Handles the SIGINT and SIGTERM signals.
@@ -69,22 +68,12 @@ static void signalhandler(int sig)
     }
 }
 
-static void empty_function()
-{
-    printf("Timer interrupt.\n");
-    return;
-}
-
 static int setup_signal(int signo)
 {
     struct sigaction action;
     if(signo == SIGINT || signo == SIGTERM)
     {
         action.sa_handler = signalhandler;
-    }
-    else if(signo == SIGALRM)
-    {
-        action.sa_handler = empty_function;
     }
     action.sa_flags = 0;
     sigset_t empty;
@@ -220,67 +209,89 @@ static void *main_server_thread(void *socket)
         return NULL;
     }
     int sck = *(int *)socket;
+    fd_set rfds;
+    struct timeval tv;
+    int retval;
 
-    if(setup_signal(SIGALRM) < 0)
-    {
-        printf("Could not set up SIGARLM.\n");
-        return NULL;
-    }
-
+    /* Watch stdin (fd 0) to see when it has input. */
+    FD_ZERO(&rfds);
+    FD_SET(sck, &rfds);
+    /* Wait up to five seconds. */
+    
     //Start a loop of receiving contents  
     while(!terminated)
     {
         struct sockaddr_storage client_addr;
         socklen_t addr_size = sizeof client_addr;
+        int connection_fd;
 
         //Accept a connection
-        int connection_fd = accept(sck, (struct sockaddr *) &client_addr, &addr_size);
-        if(connection_fd < 0)
+        tv.tv_sec = 5;
+        tv.tv_usec = 0;
+        retval = select(sck+1, &rfds, NULL, NULL, &tv);
+        /* Don’t rely on the value of tv now! */
+
+        if (retval == -1)
+            perror("select()");
+        else if (retval == 0)
         {
-            //Implementation defined: wait for next request, not terminate server
-            if(connection_fd != EINTR)
-                printf("An error occurred accepting a new connection to the socket: %s\n", strerror(errno));
-            printf("Accept did not succeed.\n");
+            printf("Accept expired, cleaning threads...\n");
             clean_threads();
         }
         else
         {
-            //Add new service information to a new element of the thread linked list
-            struct client_thread_t *new = malloc(sizeof(struct client_thread_t));
-            new->socket_client = connection_fd;
-            new->finished = 0;
-            if(sem_init(&new->new_value, 0, 0))
+            printf("Accept available now.\n");
+            connection_fd = accept(sck, (struct sockaddr *) &client_addr, &addr_size);
+            if(connection_fd < 0)
             {
-                printf("Error initializing the client semaphore.\n");
-                continue;
-            }
-            new->socket_server = sck;
-            memcpy((void *) &new->client_addr, (const void *) &client_addr, sizeof(struct sockaddr_storage));
-            
-            //Create the thread that will serve the client
-            int ret = pthread_create(&new->thread_id, NULL, handle_client, (void *) new);
-            if(ret!= 0)
-            {            
-                printf("Could not create new thread: %s", strerror(ret));
-
                 //Implementation defined: wait for next request, not terminate server
-                continue; 
+                if(connection_fd == EAGAIN || connection_fd == EWOULDBLOCK)
+                    printf("Accept did not succeed this time, trying again...\n");
+                else
+                {
+                    printf("Unexpected error on accept.\n");
+                    continue;
+                }
             }
+            else
+            {
+                //Add new service information to a new element of the thread linked list
+                struct client_thread_t *new = malloc(sizeof(struct client_thread_t));
+                new->socket_client = connection_fd;
+                new->finished = 0;
+                if(sem_init(&new->new_value, 0, 0))
+                {
+                    printf("Error initializing the client semaphore.\n");
+                    continue;
+                }
+                new->socket_server = sck;
+                memcpy((void *) &new->client_addr, (const void *) &client_addr, sizeof(struct sockaddr_storage));
+                
+                //Create the thread that will serve the client
+                int ret = pthread_create(&new->thread_id, NULL, handle_client, (void *) new);
+                if(ret!= 0)
+                {            
+                    printf("Could not create new thread: %s", strerror(ret));
 
-            //Add the thread information to the linked list
-            printf("Inserting the element to the list.\n");
-            ret = pthread_mutex_lock(&list_mutex);
-            if(ret != 0)
-            {
-                printf("Could not lock mutex to access list.\n");
-                break;  
-            }
-            SLIST_INSERT_HEAD(&head, new, node);
-            ret = pthread_mutex_unlock(&list_mutex);
-            if(ret != 0)
-            {
-                printf("Could not unlock mutex to access list.\n");
-                break;  
+                    //Implementation defined: wait for next request, not terminate server
+                    continue; 
+                }
+
+                //Add the thread information to the linked list
+                printf("Inserting the element to the list.\n");
+                ret = pthread_mutex_lock(&list_mutex);
+                if(ret != 0)
+                {
+                    printf("Could not lock mutex to access list.\n");
+                    break;  
+                }
+                SLIST_INSERT_HEAD(&head, new, node);
+                ret = pthread_mutex_unlock(&list_mutex);
+                if(ret != 0)
+                {
+                    printf("Could not unlock mutex to access list.\n");
+                    break;  
+                }
             }
         }
     }
@@ -458,7 +469,7 @@ int main(int c, char **argv)
     }
 
     //Create the socket file descriptor
-    int sck = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    int sck = socket(res->ai_family, res->ai_socktype | SOCK_NONBLOCK, res->ai_protocol);
     if(sck == -1)
     {
         printf("An error occurred setting up the socket: %s\n", strerror(errno));
@@ -486,31 +497,6 @@ int main(int c, char **argv)
 
     //Initialize Liked List of client threads
     SLIST_INIT(&head);
-
-    //Create a timer routine that joins threads as they finish
-    struct itimerspec interval_time;
-	struct itimerspec last_interval_time;
-
-	//Set up to signal SIGALRM if timer expires
-	ret = timer_create(CLOCK_MONOTONIC, NULL, &timer);
-	if(ret)
-	{
-		printf("Failed on creating time.\n");
-		goto close_socket_hm11;    
-	}
-
-	//Arm the interval timer
-	interval_time.it_interval.tv_sec = 5;
-	interval_time.it_interval.tv_nsec = 0;
-	interval_time.it_value.tv_sec = 5;
-	interval_time.it_value.tv_nsec = 0;
-
-	ret = timer_settime(timer, 0, &interval_time, &last_interval_time);
-	if(ret)
-	{
-		printf("Scheduler setup failed on setting time value.");
-		goto close_socket_hm11;
-	}
 
     //Create a thread for the socket created, to wait for connections without interrumping the interaction with the driver
     pthread_t server_thread_id;
@@ -622,10 +608,6 @@ close_all:
     {
         printf("Could not join server thread: %s", strerror(ret));
         return 1;  
-    }
-    if(timer_delete(timer))
-    {
-        printf("Could not delete timer.\n");
     }
 
 close_socket_hm11:
