@@ -536,14 +536,20 @@ void hm11_cleanup_module(void)
     if(services.str_len)
     {
         kfree(services.str);
+        service_str_num_chars_to_copy = 0;
+        services.str_len = 0;
     }
     if(characteristics.str_len)
     {
         kfree(characteristics.str);
+        characteristics_str_num_chars_to_copy = 0;
+        characteristics.str_len = 0;
     }
     if(devices.str_len)
     {
         kfree(devices.str);
+        devices_str_num_chars_to_copy = 0;
+        devices.str_len = 0;
     }
 }
 
@@ -862,7 +868,7 @@ static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_i
     }
     ret = num_bytes_read;
     //ignore the end terminating bytes which will just be '*'s
-    while(num_bytes_read < (ret + 56))
+    while(num_bytes_read < (ret + 58))
     {
         fixed_wait(&c,1);
         num_bytes_read++;

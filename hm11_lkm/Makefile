@@ -1,6 +1,6 @@
 DEBFLAGS = -O2
 EXTRA_CFLAGS += $(DEBFLAGS)
-KBUILD_EXTRA_SYMBOLS := $(PWD)/Module.symvers
+KBUILD_EXTRA_SYMBOLS := $(PWD)/../uart_driver/Module.symvers
 
 ifneq ($(KERNELRELEASE),)
 # call from kernel build system
@@ -17,4 +17,3 @@ endif
 
 clean:
 	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions
-
