@@ -917,43 +917,41 @@ static ssize_t hm11_echo()
         return -ENOMEM;
     }
     //unconditional wait for two bytes (since we expect a minimum of two bytes) and optional wait for more (upto 7)
-    while(bytes_read <2)
+
+    ret = variable_wait_limited(&receive_buf[bytes_read],(7 - bytes_read), 1000);
+    //return error
+    if(ret < 0)
     {
-        ret = variable_wait_limited(&receive_buf[bytes_read],(7 - bytes_read), 1000);
-        //return error
-        if(ret < 0)
+        goto free_mem;
+    }
+    bytes_read += ret;
+    //if minimum two bytes read
+    if(bytes_read >= 2)
+    {
+        if(bytes_read == 9)
         {
-            goto free_mem;
+            if(strncmp(receive_buf,"OK+WAKE",7)==0)
+            {
+                ret = 2;
+                goto free_mem;
+            }
+            else if(strncmp(receive_buf,"OK+LOST",7)==0)
+            {
+                ret = 1;
+                goto free_mem;
+            }
+            //HANDLE GARBAGE CASE: 7 bytes read but they didn't correspond to expected values
         }
-        bytes_read += ret;
-        //if minimum two bytes read
-        if(bytes_read >= 2)
+        else if(bytes_read == 2)
         {
-            if(bytes_read == 9)
+            if(strncmp(receive_buf,"OK",bytes_read)==0)
             {
-                if(strncmp(receive_buf,"OK+WAKE",7)==0)
-                {
-                    ret = 2;
-                    goto free_mem;
-                }
-                else if(strncmp(receive_buf,"OK+LOST",7)==0)
-                {
-                    ret = 1;
-                    goto free_mem;
-                }
-                //HANDLE GARBAGE CASE: 7 bytes read but they didn't correspond to expected values
+                ret = 0;
+                goto free_mem;
             }
-            else if(bytes_read == 2)
-            {
-                if(strncmp(receive_buf,"OK",bytes_read)==0)
-                {
-                    ret = 0;
-                    goto free_mem;
-                }
-                //HANDLE GARBAGE CASE: two bytes were read but it was not OK
-            }
-            //HANDLE GARBAGE CASE: Some number of bytes other than 7 and two bytes were read
+            //HANDLE GARBAGE CASE: two bytes were read but it was not OK
         }
+        //HANDLE GARBAGE CASE: Some number of bytes other than 7 and two bytes were read
     }
     //uart_receive()
     free_mem:
