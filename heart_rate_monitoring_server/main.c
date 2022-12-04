@@ -69,6 +69,33 @@ static void signalhandler(int sig)
     }
 }
 
+static int setup_signal(int signo)
+{
+    struct sigaction action;
+    if(signo == SIGINT || signo == SIGTERM)
+    {
+        action.sa_handler = signalhandler;
+    }
+    else if(signo == SIGALRM)
+    {
+        action.sa_handler = empty_function;
+    }
+    action.sa_flags = 0;
+    sigset_t empty;
+    if(sigemptyset(&empty) == -1)
+    {
+        printf("Could not set up empty signal set: %s.", strerror(errno));
+        return -1; 
+    }
+    action.sa_mask = empty;
+    if(sigaction(signo, &action, NULL) == -1)
+    {
+        printf("Could not set up handle for signal: %s.", strerror(errno));
+        return -1;         
+    }
+    return 0;
+}
+
 static void clean_threads()
 {
     //Perform cleaning of the current list on every new connection
@@ -192,6 +219,12 @@ static void *main_server_thread(void *socket)
         return NULL;
     }
     int sck = *(int *)socket;
+
+    if(setup_signal(SIGALRM) < 0)
+    {
+        printf("Could not set up SIGARLM.\n");
+        return NULL;
+    }
 
     //Start a loop of receiving contents  
     while(!terminated)
@@ -399,19 +432,9 @@ int main(int c, char **argv)
     free(cmd_str.str);
 
     //Set a signal handler to gracefully terminate the server
-    struct sigaction action;
-    action.sa_handler = signalhandler;
-    action.sa_flags = 0;
-    sigset_t empty;
-    if(sigemptyset(&empty) == -1)
+    if(setup_signal(SIGINT) < 0)
     {
-        printf("Could not set up empty signal set: %s.", strerror(errno));
-        goto close_hm11;
-    }
-    action.sa_mask = empty;
-    if(sigaction(SIGINT, &action, NULL) == -1)
-    {
-        printf("Could not set up handle for SIGINT: %s.", strerror(errno));
+        printf("Could not set up SIGARLM.\n");
         goto close_hm11;
     }
 
@@ -470,12 +493,7 @@ int main(int c, char **argv)
 		goto close_socket_hm11;    
 	}
 	
-	sighandler_t ret_signal = signal(SIGALRM, (void(*)()) empty_function);
-	if(ret_signal == SIG_ERR)
-	{
-		printf("Signal setup failed on creation.");
-		goto close_socket_hm11;    
-	}
+    struct sigaction timer_signal;
 
 	//Arm the interval timer
 	interval_time.it_interval.tv_sec = 5;
@@ -594,12 +612,14 @@ int main(int c, char **argv)
 close_all:
     terminated = 1;
     //Wait for server thread to finalize
+    printf("Joining threads...\n");
     ret = pthread_join(server_thread_id, NULL);
     if(ret)
     {
         printf("Could not join server thread: %s", strerror(ret));
         return 1;  
     }
+close_timer_socket_hm11:
     if(timer_delete(timer))
     {
         printf("Could not delete timer.\n");
