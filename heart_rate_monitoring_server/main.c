@@ -116,7 +116,7 @@ void print_accepted_conn(struct sockaddr_storage client_addr)
         char addr[INET6_ADDRSTRLEN];
         struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)&client_addr;
         inet_ntop(AF_INET6, &(addr_in6->sin6_addr), addr, INET6_ADDRSTRLEN);
-        printf("Accepted connection from %s", addr);
+        printf("Accepted connection from %s\n", addr);
     }
 }
 
@@ -136,19 +136,23 @@ static void *handle_client(void *client_info)
 
     do
     {   
+        printf("Checking if the client has terminated connection...\n");
         //Check if the client has finished connection
         if(!recv(client_info_parsed->socket_client, &unused, sizeof(char), MSG_DONTWAIT))
             goto terminate_client;
+        printf("Connection is still active; waiting for an available value...\n");
 
         //Wait for a new value to come from the HM11 driver
         while(!client_info_parsed->new_value_available);
         //Clear flag
+        printf("New value available, acquiring lock...\n");
         int ret = pthread_mutex_lock(&client_info_parsed->new_value_available_mutex);
         if(ret != 0)
         {
             printf("Could not lock mutex: %s", strerror(ret));
             goto terminate_client;
         }
+        printf("Lock acquired.\n");
         client_info_parsed->new_value_available = 0;
         ret = pthread_mutex_unlock(&client_info_parsed->new_value_available_mutex);
         if(ret != 0)
@@ -156,6 +160,7 @@ static void *handle_client(void *client_info)
             printf("Could not lock mutex: %s", strerror(ret));
             goto terminate_client;
         }
+        printf("Lock released.\n");
 
         //Get the value
         char heart_rate_value = heart_rate;
