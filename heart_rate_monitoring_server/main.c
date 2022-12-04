@@ -170,11 +170,9 @@ static void *handle_client(void *client_info)
 
     do
     {   
-        printf("Checking if the client has terminated connection...\n");
         //Check if the client has finished connection
         if(!recv(client_info_parsed->socket_client, &unused, sizeof(char), MSG_DONTWAIT))
             goto terminate_client;
-        printf("Connection is still active; waiting for an available value...\n");
 
         //Wait for a new value to come from the HM11 driver
         if(sem_wait(&client_info_parsed->new_value))
@@ -190,7 +188,6 @@ static void *handle_client(void *client_info)
 
         //Send it to the client
         int sent_bytes = 0;
-        printf("Sending HR: %d to...\n", heart_rate);
         while(sent_bytes != 1)
         {
             sent_bytes = send(client_info_parsed->socket_client, &heart_rate_value, sizeof(char), 0);
@@ -518,7 +515,6 @@ int main(int c, char **argv)
     while(!terminated)
     {
         sleep(2);
-        printf("Getting heart rate values...\n");
         ret = ioctl(hm11_dev, HM11_READ_NOTIFIED, &heart_rate);
         if(ret)
         {
