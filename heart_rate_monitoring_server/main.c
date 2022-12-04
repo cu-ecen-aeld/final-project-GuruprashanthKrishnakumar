@@ -73,7 +73,7 @@ static void signalhandler(int sig)
 static void clean_threads()
 {
     //Perform cleaning of the current list on every new connection
-    struct client_thread_t *element = NULL;
+    /*struct client_thread_t *element = NULL;
     struct client_thread_t *tmp = NULL;
     SLIST_FOREACH_SAFE(element, &head, node, tmp)
     {
@@ -90,7 +90,7 @@ static void clean_threads()
             pthread_mutex_destroy(&element->new_value_available_mutex);
             free(element);
         }
-    }
+    }*/
 }
 
 /**
@@ -245,6 +245,7 @@ static void *main_server_thread(void *socket)
         }
 
         //Add the thread information to the linked list
+        printf("Inserting the element to the list.\n");
         SLIST_INSERT_HEAD(&head, new, node);
     }
 
@@ -533,6 +534,8 @@ int main(int c, char **argv)
             struct client_thread_t *tmp = NULL;
             SLIST_FOREACH_SAFE(element, &head, node, tmp)
             {
+                printf("Setting new available value to socket...\n");
+                print_accepted_conn(element->client_addr);
                 ret = pthread_mutex_lock(&element->new_value_available_mutex);
                 if(ret != 0)
                 {
