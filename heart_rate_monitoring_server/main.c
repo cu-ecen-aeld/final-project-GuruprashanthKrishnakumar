@@ -109,7 +109,7 @@ void print_accepted_conn(struct sockaddr_storage client_addr)
         char addr[INET6_ADDRSTRLEN];
         struct sockaddr_in *addr_in = (struct sockaddr_in *)&client_addr;
         inet_ntop(AF_INET, &(addr_in->sin_addr), addr, INET_ADDRSTRLEN);
-        printf("Accepted connection from %s", addr);
+        printf("Accepted connection from %s\n", addr);
     }
     else if(client_addr.ss_family == AF_INET6)
     {
@@ -162,6 +162,8 @@ static void *handle_client(void *client_info)
 
         //Send it to the client
         int sent_bytes = 0;
+        printf("Sending HR: %d to...\n");
+        print_accepted_conn(client_info_parsed->client_addr);
         while(sent_bytes != 1)
         {
             sent_bytes = send(client_info_parsed->socket_client, &heart_rate_value, sizeof(char), 0);
