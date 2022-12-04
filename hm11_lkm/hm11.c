@@ -133,18 +133,20 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         if(!str)
             return -ENOMEM;
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
-            return -EFAULT;
+        {
+            ret_val = -EFAULT;
+            goto free_mac_read;
+        }
         if (ioctl_str.str_len < MAC_SIZE_STR)
-            return -EOVERFLOW;
-        
+        {
+            ret_val = -EOVERFLOW;
+            goto free_mac_read;
+        }
         hm11_mac_read(str);
 
         if (copy_to_user((void __user *)ioctl_str.str, str, MAC_SIZE_STR))
-            return -EFAULT;
-
-        //Free the used space
-        kfree(str);
-
+            ret_val = -EFAULT;
+        free_mac_read: kfree(str);
         break;
     case HM11_MAC_WR:
         printk("hm11: Modifying MAC address...\n");
@@ -153,17 +155,25 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             return -ENOMEM;
         
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
-            return -EFAULT;
+        {
+            ret_val = -EFAULT;
+            goto free_mac_wr;
+        }
         if (ioctl_str.str_len != MAC_SIZE_STR)
-            return -EOVERFLOW;
+        {
+            ret_val = -EOVERFLOW;
+            goto free_mac_wr;
+        }
         if (copy_from_user(str, (const void __user *)ioctl_str.str, MAC_SIZE_STR))
-            return -EFAULT;
+        {
+            ret_val = -EFAULT;
+            goto free_mac_wr;
+        }
 
         hm11_mac_write(str);
 
         //Free the used space
-        kfree(str);
-
+        free_mac_wr: kfree(str);
         break;
     case HM11_CONN_LAST_DEVICE:
         printk("hm11: Connecting to last successfully paired device...\n");
@@ -404,23 +414,30 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             return -ENOMEM;
         
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
-            return -EFAULT;
+        {
+            ret_val = -EFAULT;
+            goto free_hm11_name;
+        }
         if (ioctl_str.str_len > MAX_NAME_LEN)
-            return -EOVERFLOW;
+        {
+            ret_val = -EOVERFLOW;
+            goto free_hm11_name;            
+        }
         if (copy_from_user(str, (const void __user *)ioctl_str.str, MAX_NAME_LEN))
-            return -EFAULT;
+        {
+            ret_val = -EFAULT;
+            goto free_hm11_name;   
+        }
 
         printk("User-space string: %s", str);
         hm11_set_name(str);
 
         //Free the used space
-        kfree(str);
-
+        free_hm11_name: kfree(str);
         break;
     case HM11_DEFAULT:
         printk("hm11: Performing device reset to defaults...\n");
         ret_val = hm11_reset();
-
         break;
     case HM11_ROLE:
         printk("hm11: Modifying device role...\n");
