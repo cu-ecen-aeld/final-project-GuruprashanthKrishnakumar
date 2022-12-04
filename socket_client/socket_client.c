@@ -16,9 +16,9 @@
 
 bool signal_caught = false;
 static void signal_handler();
-static int write_to_log_file(char *buf, size_t len);
-static int write_byte(int fd, char *buf);
+static int write_to_log_file(char buf);
 static int setup_signal(int signo);
+static int write_fd(int fd, char *str, int size);
 
 static void signal_handler()
 {
@@ -26,40 +26,55 @@ static void signal_handler()
     signal_caught = true;
 }
 
-static int write_byte(int fd, char *buf)
+static int write_fd(int fd, char *str, int size)
 {
-    int ret = 0;
-    ret = write(fd,buf,1);
-    if(ret < 0)
+    int written_bytes;
+    char *ptr_to_write = str;
+    while(size != 0)
     {
-        printf("Write: %s",strerror(errno));
-        return -1;
+        written_bytes = write(fd, ptr_to_write, size);
+        if(written_bytes == -1)
+        {
+            //If the error is caused by an interruption of the system call try again
+            if(errno == EINTR)
+                continue;
+
+            //Else, error occurred, print it to syslog and finish program
+            printf("Could not write to the file: %s", strerror(errno));
+            return -errno;
+        }
+        size -= written_bytes;
+        ptr_to_write += written_bytes; 
     }
+
     return 0;
 }
 
-static int write_to_log_file(char *buf, size_t len)
+static int write_to_log_file(char buf)
 {
-    int log_file_desc, num_bytes_written = 0,ret = 0;
+    int log_file_desc, ret = 0;
     log_file_desc = open(LOG_FILE,O_RDWR);
     if(log_file_desc == -1)
     {
         printf("Open: %s",strerror(errno));
         return -1;
     }
-    while(num_bytes_written < len)
+    char uart_message[40];
+    int size = snprintf(uart_message, 32, "Heart rate value received: %d\n", buf); 
+    if(size < 0)
     {
-        printf("Value: %d\n", buf[num_bytes_written]);
-        if(write_byte(log_file_desc,&buf[num_bytes_written])==-1)
-        {
-            goto out;
-        }
-        if(write_byte(log_file_desc,"\n")==-1)
-        {
-            goto out;
-        }
-        num_bytes_written +=1;
-    }    
+        printf("Could not parse string to be sent to the UART.\n");
+        ret = -1;
+        goto out;
+    }
+
+    if(write_fd(log_file_desc, uart_message, size))
+    {
+        printf("An error occured while writing to UART.\n");
+        ret = -1;
+        goto out;
+    }
+    
     ret = 0;
     out: close(log_file_desc);
         return ret;
@@ -91,7 +106,7 @@ int main(void)
 {
 	int socket_desc,ret = 0;
 	struct sockaddr_in server;
-	char server_reply[512];
+	char server_reply;
 	//char *message;
 	//Create socket
 	socket_desc = socket(AF_INET , SOCK_STREAM , 0);
@@ -131,7 +146,7 @@ int main(void)
     while(!signal_caught)
     {
         printf("Trying to check for a value...\n");
-        ret = recv(socket_desc, server_reply , 512 , 0);
+        ret = recv(socket_desc, &server_reply, 1, 0);
         if(ret<0)
         {
             if(ret == -EINTR)
@@ -153,8 +168,8 @@ int main(void)
         }
         else
         {   
-            printf("Writing value %d to the log file.\n", server_reply[0]);
-            if(write_to_log_file(server_reply,ret)==-1)
+            printf("Writing value %d to the log file.\n", server_reply);
+            if(write_to_log_file(server_reply)==-1)
             {
                 goto out;
             }
