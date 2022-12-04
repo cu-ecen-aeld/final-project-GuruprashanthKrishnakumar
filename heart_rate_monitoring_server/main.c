@@ -76,8 +76,9 @@ static void signalhandler(int sig)
 static void clean_threads()
 {
     //Perform cleaning of the current list on every new connection
-    /*struct client_thread_t *element = NULL;
+    struct client_thread_t *element = NULL;
     struct client_thread_t *tmp = NULL;
+
     SLIST_FOREACH_SAFE(element, &head, node, tmp)
     {
         if(element->finished)
@@ -93,7 +94,7 @@ static void clean_threads()
             pthread_mutex_destroy(&element->new_value_available_mutex);
             free(element);
         }
-    }*/
+    }
 }
 
 /**

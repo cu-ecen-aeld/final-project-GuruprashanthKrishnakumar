@@ -31,7 +31,7 @@ static int write_byte(int fd, char *buf)
     ret = write(fd,buf,1);
     if(ret < 0)
     {
-        syslog(LOG_ERR,"Write: %s",strerror(errno));
+        printf("Write: %s",strerror(errno));
         return -1;
     }
     return 0;
@@ -43,7 +43,7 @@ static int write_to_log_file(char *buf, size_t len)
     log_file_desc = open(LOG_FILE,O_RDWR,666);
     if(log_file_desc == -1)
     {
-        syslog(LOG_ERR,"Open: %s",strerror(errno));
+        printf("Open: %s",strerror(errno));
         return -1;
     }
     while(num_bytes_written < len)
@@ -74,13 +74,13 @@ static int setup_signal(int signo)
     sigset_t empty;
     if(sigemptyset(&empty) == -1)
     {
-        syslog(LOG_ERR, "Could not set up empty signal set: %s.", strerror(errno));
+        printf( "Could not set up empty signal set: %s.", strerror(errno));
         return -1; 
     }
     action.sa_mask = empty;
     if(sigaction(signo, &action, NULL) == -1)
     {
-        syslog(LOG_ERR, "Could not set up handle for signal: %s.", strerror(errno));
+        printf( "Could not set up handle for signal: %s.", strerror(errno));
         return -1;         
     }
     return 0;
