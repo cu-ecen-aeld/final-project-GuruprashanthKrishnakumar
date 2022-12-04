@@ -23,6 +23,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <time.h>
+#include <semaphore.h>
 #include "../hm11_lkm/hm11_ioctl.h"
 #include "queue.h"
 
@@ -39,6 +40,7 @@ struct client_thread_t
     pthread_mutex_t new_value_available_mutex;
     char new_value_available;
     char finished;
+    sem_t new_value;
 
     //Linked list node instance
     SLIST_ENTRY(client_thread_t) node;
@@ -144,31 +146,20 @@ static void *handle_client(void *client_info)
         printf("Connection is still active; waiting for an available value...\n");
 
         //Wait for a new value to come from the HM11 driver
-        while(!client_info_parsed->new_value_available);
+        if(sem_wait(&client_info_parsed->new_value))
+        {
+            printf("Error while waiting for the semaphore, iterating again.\n");
+            continue;
+        }
         //Clear flag
-        printf("New value available, acquiring lock...\n");
-        int ret = pthread_mutex_lock(&client_info_parsed->new_value_available_mutex);
-        if(ret != 0)
-        {
-            printf("Could not lock mutex: %s", strerror(ret));
-            goto terminate_client;
-        }
-        printf("Lock acquired.\n");
         client_info_parsed->new_value_available = 0;
-        ret = pthread_mutex_unlock(&client_info_parsed->new_value_available_mutex);
-        if(ret != 0)
-        {
-            printf("Could not lock mutex: %s", strerror(ret));
-            goto terminate_client;
-        }
-        printf("Lock released.\n");
 
         //Get the value
         char heart_rate_value = heart_rate;
 
         //Send it to the client
         int sent_bytes = 0;
-        printf("Sending HR: %d to...\n");
+        printf("Sending HR: %d to...\n", heart_rate);
         print_accepted_conn(client_info_parsed->client_addr);
         while(sent_bytes != 1)
         {
@@ -224,13 +215,12 @@ static void *main_server_thread(void *socket)
         }
 
         //Add new service information to a new element of the thread linked list
-        volatile struct client_thread_t *new = malloc(sizeof(struct client_thread_t));
+        struct client_thread_t *new = malloc(sizeof(struct client_thread_t));
         new->socket_client = connection_fd;
         new->finished = 0;
-        new->new_value_available = 0;
-        if(pthread_mutex_init(&new->new_value_available_mutex, NULL))
+        if(sem_init(&new->new_value, 0, 0))
         {
-            printf("Mutex could not be initialized...\n");
+            printf("Error initializing the client semaphore.\n");
             continue;
         }
         new->socket_server = sck;
@@ -555,20 +545,12 @@ int main(int c, char **argv)
             {
                 SLIST_FOREACH_SAFE(element, &head, node, tmp)
                 {
-                    printf("Setting new available value to socket...\n");
-                    ret = pthread_mutex_lock(&element->new_value_available_mutex);
-                    if(ret != 0)
+                    if(sem_post(&element->new_value))
                     {
-                        goto close_all;  
+                        printf("Error while posting for the semaphore, iterating again.\n");
+                        continue;
                     }
-                    element->new_value_available = 1;
-                    ret = pthread_mutex_unlock(&element->new_value_available_mutex);
-                    if(ret != 0)
-                    {
-                        printf("Could not lock mutex: %s", strerror(ret));
-                        goto close_all;  
-                    }
-                    printf("Value to the socket has been set.\n");
+                    printf("Semaphore to the socket has been set.\n");
                 }
             }
             else
