@@ -15,6 +15,7 @@
 #include <linux/fs.h> // file_operations
 #include <asm/uaccess.h>
 #include <linux/slab.h>
+#include <linux/mutex.h>
 #include "hm11_ioctl.h"
 
 #define HEART_RATE_ID   (0x16)
@@ -49,6 +50,7 @@ static ssize_t hm11_set_role(char *str);
 static void hm11_sleep(void);
 static ssize_t hm11_read_notified(void);
 
+struct mutex hm11_protect;
 static size_t devices_str_num_chars_to_copy = 0;
 static struct hm11_ioctl_str devices = {NULL,0};
 static size_t service_str_num_chars_to_copy = 0;
@@ -66,6 +68,11 @@ extern void uart_flush_buffer(void);
 int hm11_open(struct inode *inode, struct file *filp)
 {
     //Handle open
+    if(!(mutex_trylock(&hm11_protect)))
+    {
+        printk("hm11: Device not available\n");
+        return -ENODEV;
+    }
     printk("hm11: Module open\n");
     try_module_get(THIS_MODULE);
 
@@ -77,8 +84,27 @@ int hm11_release(struct inode *inode, struct file *filp)
     //Handle close
     printk("hm11: Module released\n");
     uart_flush_buffer();
+    if(services.str_len)
+    {
+        kfree(services.str);
+        service_str_num_chars_to_copy = 0;
+        services.str_len = 0;
+    }
+    
+    if(characteristics.str_len)
+    {
+        kfree(characteristics.str);
+        characteristics_str_num_chars_to_copy = 0;
+        characteristics.str_len = 0;
+    }
+    if(devices.str_len)
+    {
+        kfree(devices.str);
+        devices_str_num_chars_to_copy = 0;
+        devices.str_len = 0;
+    }
     module_put(THIS_MODULE);
-
+    mutex_unlock(&hm11_protect);
     return 0;
 }
 
@@ -531,7 +557,7 @@ int hm11_init_module(void)
         printk(KERN_WARNING "Can't get major %d\n", hm11_major);
         return result;
     }
-
+    mutex_init(&hm11_protect);
     devno = MKDEV(hm11_major, hm11_minor);
 	cdev_init(&cdev, &hm11_fops);
     cdev.owner = THIS_MODULE;
@@ -551,24 +577,8 @@ void hm11_cleanup_module(void)
     dev_t devno = MKDEV(hm11_major, hm11_minor);
     cdev_del(&cdev);
     unregister_chrdev_region(devno, 1);
-    if(services.str_len)
-    {
-        kfree(services.str);
-        service_str_num_chars_to_copy = 0;
-        services.str_len = 0;
-    }
-    if(characteristics.str_len)
-    {
-        kfree(characteristics.str);
-        characteristics_str_num_chars_to_copy = 0;
-        characteristics.str_len = 0;
-    }
-    if(devices.str_len)
-    {
-        kfree(devices.str);
-        devices_str_num_chars_to_copy = 0;
-        devices.str_len = 0;
-    }
+    mutex_destroy(&hm11_protect);
+
 }
 
 static ssize_t hm11_transmit(char *buf, size_t len)
@@ -853,7 +863,7 @@ static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_i
         ret = fixed_wait(&c,1);
         if(ret<0)
         {
-            break;
+            goto check_ret_for_error;
         }
         else if(c == '*')
             continue;
@@ -866,14 +876,14 @@ static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_i
             ret = fixed_wait(&c,1);
             if(c == '*')
             {
-                break;
+                goto check_ret_for_error;
             }
             else
             {
                 ret = reallocate_memory_if(((buf->str_len - num_bytes_read)<2),buf,packet_length);
                 if(ret < 0)
                 {
-                    break;
+                    goto check_ret_for_error;
                 }
                 //the first service/character entry does not need a ','
                 if(num_bytes_read)
@@ -891,12 +901,20 @@ static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_i
             ret = reallocate_memory_if(((buf->str_len - num_bytes_read)<1),buf,packet_length);
             if(ret < 0)
             {
-                break;
+                goto check_ret_for_error;
             }
             buf->str[num_bytes_read] = c;
             num_bytes_read +=1;
         }
     }
+    ret = reallocate_memory_if(((buf->str_len - num_bytes_read)<1),buf,1);
+    if(ret >= 0)
+    {
+        buf->str[num_bytes_read] = 0;
+        num_bytes_read +=1;
+    }
+
+    check_ret_for_error:
     if(ret<0)
     {
         kfree(buf->str);
@@ -904,15 +922,7 @@ static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_i
         return ret;
     }
 
-    ret = reallocate_memory_if(((buf->str_len - num_bytes_read)<1),buf,1);
-    if(ret < 0)
-    {
-        kfree(buf->str);
-        buf->str_len = 0;
-        return ret;
-    }
-    buf->str[num_bytes_read] = 0;
-    num_bytes_read +=1;
+
 
     ret = num_bytes_read;
     //ignore the end terminating bytes which will just be '*'s
@@ -1111,6 +1121,10 @@ static ssize_t hm11_device_probe(void)
 static ssize_t hm11_services_probe(void)
 {
     ssize_t ret = 0;
+    if(service_str_num_chars_to_copy > 0)
+    {
+        return (service_str_num_chars_to_copy + 1);
+    }
     ret = hm11_transmit("AT+FINDSERVICES?",16);
     if(ret<0)
     {
@@ -1136,6 +1150,10 @@ static ssize_t hm11_services_probe(void)
 static ssize_t hm11_characteristics_probe(void)
 {
     ssize_t ret = 0;
+    if(characteristics_str_num_chars_to_copy>0)
+    {
+        return (characteristics_str_num_chars_to_copy + 1);
+    }
     ret = hm11_transmit("AT+FINDALLCHARS?",16);
     if(ret<0)
     {
