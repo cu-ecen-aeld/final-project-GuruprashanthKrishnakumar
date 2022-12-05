@@ -297,6 +297,7 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
         break;
     case HM11_CHARACTERISTIC_DISCOVER_PROBE:
+        printk("hm11: Device discovery request\n");
         res = hm11_characteristics_probe();
         if(res < 0)
         {
@@ -681,6 +682,8 @@ static ssize_t parse_device_discovery_response(void)
     {
         return ret;
     }
+    temp_buf[8] = 0;
+    printk("Received: %s", temp_buf);
     if(strncmp(temp_buf,"OK+DISCS",8)!=0)
     {
         return -ENODEV;
@@ -690,6 +693,8 @@ static ssize_t parse_device_discovery_response(void)
     {
         return ret;
     }
+    temp_buf[8] = 0;
+    printk("Received: %s", temp_buf);
     while((strncmp(temp_buf,"OK+DISCE",8)!=0))
     {
         if(!devices.str_len)
@@ -721,6 +726,8 @@ static ssize_t parse_device_discovery_response(void)
         {
             goto ret_error_check;
         }
+        temp_buf[12] = 0;
+        printk("Received: %s", temp_buf);
         strncpy(&devices.str[num_bytes_written],temp_buf,12);
         num_bytes_written += 12;
         devices.str[num_bytes_written++]=';';
@@ -733,6 +740,7 @@ static ssize_t parse_device_discovery_response(void)
             {
                 goto ret_error_check;
             }
+            printk("Received: %c", c);
         }
         //Ideally should be OK+NAME:
         ret = fixed_wait(temp_buf,8);
@@ -740,6 +748,8 @@ static ssize_t parse_device_discovery_response(void)
         {
             goto ret_error_check;
         }
+        temp_buf[8] = 0;
+        printk("Received: %s", temp_buf);
         //but you never know
         if(strncmp(temp_buf,"OK+NAME:",8)!=0)
         {
@@ -753,6 +763,7 @@ static ssize_t parse_device_discovery_response(void)
             {
                 goto ret_error_check;
             }
+            printk("Received: %c", c);
             if(c=='\r')
             {
                 //read \n as well
@@ -762,6 +773,7 @@ static ssize_t parse_device_discovery_response(void)
                     goto ret_error_check;
                     //goto outside outer while
                 }
+                printk("Received: %c", c);
                 break;
             }
             ret = reallocate_memory_if(((devices.str_len - num_bytes_written)<1),&devices,35);
@@ -776,9 +788,13 @@ static ssize_t parse_device_discovery_response(void)
         {
             goto ret_error_check;
         }
+        temp_buf[8] = 0;
+        printk("Received: %s", temp_buf);
     }
     //discard the trailing \r\n
     ret = fixed_wait(temp_buf,2);
+    temp_buf[2] = 0;
+    printk("Received: %s", temp_buf);
     ret_error_check:
     //check if any error occurred
     if(ret<0)
@@ -1059,8 +1075,6 @@ static long hm11_mac_connect(char *str)
 
 static ssize_t hm11_device_probe(void)
 {
-    /*write_uart("AT+DISC?");
-    read_uart();*/
     ssize_t ret = 0;
     ret = hm11_transmit("AT+DISC?",8);
     if(ret<0)
