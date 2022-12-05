@@ -905,9 +905,11 @@ static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_i
     //ignore the end terminating bytes which will just be '*'s
     while(num_bytes_read < (ret + 58))
     {
+        printk("Num_bytes_read: %ld, ret: %ld\n", num_bytes_read, ret);
         fixed_wait(&c,1);
         num_bytes_read++;
     }
+    
     //if memory was allocated but no characters were read
     if(!ret)
     {
