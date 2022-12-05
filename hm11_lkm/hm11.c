@@ -282,7 +282,7 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             printk("Cant get user pointer\n");
             return -EFAULT;
         }
-        if (ioctl_str.str_len != (service_str_num_chars_to_copy + 1))
+        if (ioctl_str.str_len < (service_str_num_chars_to_copy + 1))
         {
             printk("Size too small: %d against %ld\n", ioctl_str.str_len, service_str_num_chars_to_copy + 1);
             return -EOVERFLOW;
