@@ -157,7 +157,7 @@ int main(int c, char **argv)
     }
 
     //Perform device discovery
-    printf("Performing device discovery\n");
+    /*printf("Performing device discovery\n");
     ret = ioctl(hm11_dev, HM11_DISCOVER_PROBE, &cmd_str);
     if(ret)
     {
@@ -186,7 +186,7 @@ int main(int c, char **argv)
     {
         printf("Discovery has been successful:\n\n%s\n", cmd_str.str);
     }
-    free(cmd_str.str);
+    free(cmd_str.str);*/
 
     //Now the device is ready to be connected to the heart rate belt
     printf("Attempting connection with the heart rate belt\n");
