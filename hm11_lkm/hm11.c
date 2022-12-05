@@ -97,7 +97,7 @@ ssize_t hm11_write(struct file *filp, const char __user *buf, size_t count, loff
 long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
     ssize_t ret_val = 0;
-    char res = 0;
+    ssize_t res = 0;
     struct hm11_ioctl_str ioctl_str;
     char *str = NULL;
 
