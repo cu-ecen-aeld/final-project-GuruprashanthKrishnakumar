@@ -594,7 +594,7 @@ static ssize_t fixed_wait(char *buf, size_t len)
     while(num_bytes_received < len)
     {
         ret = uart_receive(&buf[num_bytes_received],1);
-
+        printk("Character received fixed wait: %c\n", buf[num_bytes_received]);
         if(ret < 0)
         {
             if(ret == -EINTR)
@@ -683,7 +683,7 @@ static ssize_t parse_device_discovery_response(void)
         return ret;
     }
     temp_buf[8] = 0;
-    printk("Received: %s", temp_buf);
+    printk("Received: %s\n", temp_buf);
     if(strncmp(temp_buf,"OK+DISCS",8)!=0)
     {
         return -ENODEV;
@@ -694,7 +694,7 @@ static ssize_t parse_device_discovery_response(void)
         return ret;
     }
     temp_buf[8] = 0;
-    printk("Received: %s", temp_buf);
+    printk("Received: %s\n", temp_buf);
     while((strncmp(temp_buf,"OK+DISCE",8)!=0))
     {
         if(!devices.str_len)
@@ -727,7 +727,7 @@ static ssize_t parse_device_discovery_response(void)
             goto ret_error_check;
         }
         temp_buf[12] = 0;
-        printk("Received: %s", temp_buf);
+        printk("Received: %s\n", temp_buf);
         strncpy(&devices.str[num_bytes_written],temp_buf,12);
         num_bytes_written += 12;
         devices.str[num_bytes_written++]=';';
@@ -740,7 +740,7 @@ static ssize_t parse_device_discovery_response(void)
             {
                 goto ret_error_check;
             }
-            printk("Received: %c", c);
+            printk("Received: %c\n", c);
         }
         //Ideally should be OK+NAME:
         ret = fixed_wait(temp_buf,8);
@@ -749,7 +749,7 @@ static ssize_t parse_device_discovery_response(void)
             goto ret_error_check;
         }
         temp_buf[8] = 0;
-        printk("Received: %s", temp_buf);
+        printk("Received: %s\n", temp_buf);
         //but you never know
         if(strncmp(temp_buf,"OK+NAME:",8)!=0)
         {
@@ -763,7 +763,7 @@ static ssize_t parse_device_discovery_response(void)
             {
                 goto ret_error_check;
             }
-            printk("Received: %c", c);
+            printk("Received: %c\n", c);
             if(c=='\r')
             {
                 //read \n as well
@@ -773,7 +773,7 @@ static ssize_t parse_device_discovery_response(void)
                     goto ret_error_check;
                     //goto outside outer while
                 }
-                printk("Received: %c", c);
+                printk("Received: %c\n", c);
                 break;
             }
             ret = reallocate_memory_if(((devices.str_len - num_bytes_written)<1),&devices,35);
@@ -789,12 +789,12 @@ static ssize_t parse_device_discovery_response(void)
             goto ret_error_check;
         }
         temp_buf[8] = 0;
-        printk("Received: %s", temp_buf);
+        printk("Received: %s\n", temp_buf);
     }
     //discard the trailing \r\n
     ret = fixed_wait(temp_buf,2);
     temp_buf[2] = 0;
-    printk("Received: %s", temp_buf);
+    printk("Received: %s\n", temp_buf);
     ret_error_check:
     //check if any error occurred
     if(ret<0)
