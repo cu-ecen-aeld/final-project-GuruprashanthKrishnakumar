@@ -686,6 +686,7 @@ static ssize_t parse_device_discovery_response(void)
     printk("Received: %s\n", temp_buf);
     if(strncmp(temp_buf,"OK+DISCS",8)!=0)
     {
+        printk("STRCMP did not go thru\n");
         return -ENODEV;
     }
     printk("OK+DISCS received.\n");
