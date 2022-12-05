@@ -688,6 +688,7 @@ static ssize_t parse_device_discovery_response(void)
     {
         return -ENODEV;
     }
+    printk("OK+DISCS received.\n");
     ret = fixed_wait(temp_buf,8);
     if(ret<0)
     {
