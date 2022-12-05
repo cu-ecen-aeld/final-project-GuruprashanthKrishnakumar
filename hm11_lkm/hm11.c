@@ -322,18 +322,22 @@ long hm11_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
         if(!characteristics_str_num_chars_to_copy)
         {
+            printk("No chars\n");
             return -EINVAL;
         }
         if (copy_from_user(&ioctl_str, (const void __user *)arg, sizeof(struct hm11_ioctl_str)))
         {
+            printk("Cant get user pointer\n");
             return -EFAULT;
         }
         if (ioctl_str.str_len < (characteristics_str_num_chars_to_copy + 1))
         {
+            printk("Size too small: %d against %ld\n", ioctl_str.str_len, characteristics_str_num_chars_to_copy + 1);
             return -EOVERFLOW;
         }
         if (copy_to_user((void __user *)ioctl_str.str, characteristics.str, characteristics_str_num_chars_to_copy))
         {
+            printk("Cant copy to user pointer\n");
             return -EFAULT;
         }
         else
@@ -859,6 +863,8 @@ static ssize_t parse_response_by_delimiter_char(size_t unit_length,struct hm11_i
         {
             break;
         }
+        else if(c == '*')
+            continue;
         //if * was received, that means the end string has begun, hence break out
         else if(c == '\r')
         {
