@@ -10,7 +10,7 @@
 #include <fcntl.h>
 
 
-#define IP_ADDR                 ("192.168.1.3")
+#define IP_ADDR                 ("10.0.0.103")
 #define TCP_PORT                (9000)
 #define LOG_FILE                ("/dev/uart_serial-481a8000")
 
